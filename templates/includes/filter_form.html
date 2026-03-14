@@ -1,0 +1,95 @@
+<form method="get" action="{% url 'feed' %}" class="filter-form">
+    <div class="form-row">
+        <label for="{{ filter_form.city.id_for_label }}">{{ filter_form.city.label }}</label>
+        {{ filter_form.city }}
+        {% if filter_form.city.errors %}
+            <div class="field-errors">{{ filter_form.city.errors|striptags }}</div>
+        {% endif %}
+    </div>
+    <div class="form-row">
+        <label for="{{ filter_form.stage.id_for_label }}">{{ filter_form.stage.label }}</label>
+        {{ filter_form.stage }}
+        {% if filter_form.stage.errors %}
+            <div class="field-errors">{{ filter_form.stage.errors|striptags }}</div>
+        {% endif %}
+    </div>
+    <div class="form-row">
+        <label for="{{ filter_form.min_beds.id_for_label }}">{{ filter_form.min_beds.label }}</label>
+        {{ filter_form.min_beds }}
+        {% if filter_form.min_beds.errors %}
+            <div class="field-errors">{{ filter_form.min_beds.errors|striptags }}</div>
+        {% endif %}
+    </div>
+    <div class="form-row">
+        <label for="{{ filter_form.min_baths.id_for_label }}">{{ filter_form.min_baths.label }}</label>
+        {{ filter_form.min_baths }}
+        {% if filter_form.min_baths.errors %}
+            <div class="field-errors">{{ filter_form.min_baths.errors|striptags }}</div>
+        {% endif %}
+    </div>
+    <div class="form-row">
+        <label for="{{ filter_form.min_price.id_for_label }}">{{ filter_form.min_price.label }}</label>
+        {{ filter_form.min_price }}
+        {% if filter_form.min_price.errors %}
+            <div class="field-errors">{{ filter_form.min_price.errors|striptags }}</div>
+        {% endif %}
+    </div>
+    <div class="form-row">
+        <label for="{{ filter_form.max_price.id_for_label }}">{{ filter_form.max_price.label }}</label>
+        {{ filter_form.max_price }}
+        {% if filter_form.max_price.errors %}
+            <div class="field-errors">{{ filter_form.max_price.errors|striptags }}</div>
+        {% endif %}
+    </div>
+    <div class="filter-actions">
+        <a href="{{ clear_filters_url }}" class="filter-clear-link">Clear All</a>
+        <button type="submit">Apply</button>
+    </div>
+</form>
+
+<div class="filter-collection-section">
+    <h3>Saved Collections</h3>
+    {% if active_filters %}
+        <div class="collection-save-shell">
+            <button type="button" class="collection-save-trigger" data-collection-save-trigger>
+                Save Collection
+            </button>
+            <div class="collection-save-panel{% if collection_form.errors %} is-visible{% endif %}" data-collection-save-panel{% if not collection_form.errors %} hidden{% endif %}>
+                <form method="post" action="{{ save_collection_action }}" class="collection-form">
+                    {% csrf_token %}
+                    <div class="form-row">
+                        <label for="{{ collection_form.name.id_for_label }}">{{ collection_form.name.label }}</label>
+                        {{ collection_form.name }}
+                        {% if collection_form.name.errors %}
+                            <div class="field-errors">{{ collection_form.name.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                    <input type="hidden" name="city" value="{{ filter_form.city.value|default:'' }}">
+                    <input type="hidden" name="stage" value="{{ filter_form.stage.value|default:'' }}">
+                    <input type="hidden" name="min_beds" value="{{ filter_form.min_beds.value|default:'' }}">
+                    <input type="hidden" name="min_baths" value="{{ filter_form.min_baths.value|default:'' }}">
+                    <input type="hidden" name="min_price" value="{{ filter_form.min_price.value|default:'' }}">
+                    <input type="hidden" name="max_price" value="{{ filter_form.max_price.value|default:'' }}">
+                    <button type="submit">Save</button>
+                </form>
+            </div>
+        </div>
+    {% else %}
+        <div class="collection-save-shell">
+            <button type="button" class="collection-save-trigger" disabled>
+                Save Collection
+            </button>
+            <p class="muted">Apply filters first to save this collection.</p>
+        </div>
+    {% endif %}
+
+    {% if saved_collections %}
+        <div class="saved-collection-list">
+            {% for collection in saved_collections %}
+                <a class="saved-collection-link" href="{{ collection.url }}">{{ collection.name }}</a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="muted">No saved collections yet.</p>
+    {% endif %}
+</div>

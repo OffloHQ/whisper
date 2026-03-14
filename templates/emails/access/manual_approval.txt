@@ -1,0 +1,3 @@
+Great News, Our Team found your records. Please continue to the next step:
+
+{{ continuation_link }}

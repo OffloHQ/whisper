@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+
+{% block title %}Account | Whisper{% endblock %}
+{% block app_body_class %}account-app-shell with-desktop-shell{% endblock %}
+
+{% block app_header_brand_control %}
+<button
+    type="button"
+    class="desktop-shell-toggle"
+    id="desktop-shell-toggle"
+    aria-label="Toggle navigation panel"
+    aria-expanded="false"
+>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h16"></path>
+    </svg>
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .account-app-shell main {
+        max-width: none;
+    }
+    .account-shell {
+        display: grid;
+        gap: 1rem;
+        max-width: 980px;
+    }
+    .account-header {
+        display: grid;
+        gap: 0.35rem;
+    }
+    .account-header h1,
+    .account-card h2 {
+        margin: 0;
+    }
+    .account-card {
+        display: grid;
+        gap: 1rem;
+    }
+    .account-grid {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .account-detail-row,
+    .notification-row,
+    .activity-row {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+    .account-detail-label,
+    .notification-label {
+        color: var(--muted);
+    }
+    .activity-list {
+        display: grid;
+        gap: 0.7rem;
+    }
+    .activity-row {
+        color: var(--text);
+        text-decoration: none;
+    }
+    .status-pill {
+        background: rgba(31, 26, 20, 0.08);
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+    }
+    .danger-zone {
+        border-color: rgba(122, 75, 0, 0.18);
+    }
+    .danger-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+    .danger-link,
+    .logout-button {
+        align-items: center;
+        display: inline-flex;
+        justify-content: center;
+        text-decoration: none;
+    }
+    .contact-section {
+        display: grid;
+        gap: 1rem;
+    }
+    .contact-helper-copy {
+        color: var(--muted);
+        line-height: 1.45;
+        margin: 0;
+    }
+    .contact-block {
+        border-top: 1px solid rgba(31, 26, 20, 0.08);
+        display: grid;
+        gap: 0.85rem;
+        padding-top: 1rem;
+    }
+    .contact-block:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .contact-list {
+        display: grid;
+        gap: 0.75rem;
+    }
+    .contact-item {
+        align-items: center;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+    }
+    .contact-item-main {
+        display: grid;
+        gap: 0.2rem;
+    }
+    .contact-item-edit {
+        margin-top: 0.35rem;
+    }
+    .contact-visibility-form {
+        display: grid;
+        gap: 0.75rem;
+        margin: 0;
+    }
+    .contact-visibility-row {
+        align-items: center;
+        display: flex;
+        gap: 0.7rem;
+    }
+    .contact-visibility-row input {
+        width: auto;
+    }
+    .contact-item-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
+    .contact-inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0;
+    }
+    .contact-inline-form[hidden] {
+        display: none;
+    }
+    .contact-inline-form input {
+        min-width: 14rem;
+    }
+    .contact-link-button {
+        align-items: center;
+        background: transparent;
+        border: 1px solid rgba(31, 26, 20, 0.12);
+        color: var(--text);
+        display: inline-flex;
+        justify-content: center;
+        padding: 0.65rem 0.9rem;
+        text-decoration: none;
+    }
+    .contact-link-button.is-danger {
+        border-color: rgba(122, 75, 0, 0.22);
+        color: #7a4b00;
+    }
+    .field-errors {
+        color: #7a4b00;
+        font-size: 0.9rem;
+    }
+    .danger-link {
+        background: transparent;
+        border: 1px solid rgba(122, 75, 0, 0.28);
+        color: #7a4b00;
+        padding: 0.8rem 1rem;
+    }
+    .logout-button {
+        justify-self: start;
+    }
+    .account-action-row {
+        display: flex;
+        justify-content: flex-start;
+    }
+    @media (min-width: 768px) {
+        .account-app-shell main {
+            padding: 2rem 2rem 4rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block app_body_sidebar %}
+{% include "includes/desktop_app_shell.html" with desktop_shell_active="account" %}
+{% endblock %}
+
+{% block content %}
+<section class="account-shell">
+    <header class="account-header">
+        <h1>Account</h1>
+        <p class="muted">Your private agent profile, membership details, and board activity in one place.</p>
+    </header>
+
+    <section class="card account-card">
+        <h2>Identity</h2>
+        <div class="account-grid">
+            <div class="account-detail-row">
+                <span class="account-detail-label">Agent</span>
+                <strong>{{ current_agent.name }}</strong>
+            </div>
+            <div class="account-detail-row">
+                <span class="account-detail-label">Status</span>
+                <span class="status-pill">{% if current_agent.is_verified %}Verified Agent{% else %}Agent{% endif %}</span>
+            </div>
+            {% if account_license_status %}
+                <div class="account-detail-row">
+                    <span class="account-detail-label">License</span>
+                    <span>{{ account_license_status }}</span>
+                </div>
+            {% endif %}
+            {% if masked_license_number %}
+                <div class="account-detail-row">
+                    <span class="account-detail-label">License number</span>
+                    <span>{{ masked_license_number }}</span>
+                </div>
+            {% endif %}
+            <div class="account-detail-row">
+                <span class="account-detail-label">Member since</span>
+                <span>{{ member_since|date:"F j, Y" }}</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="card account-card">
+        <h2>Membership</h2>
+        <div class="account-grid">
+            <div class="account-detail-row">
+                <span class="account-detail-label">Tier</span>
+                <strong>{{ current_agent_membership }}</strong>
+            </div>
+            <div class="account-detail-row">
+                <span class="account-detail-label">Status</span>
+                <span class="status-pill">{{ account_membership_status }}</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="card account-card">
+        <h2>My Activity</h2>
+        <div class="activity-list">
+            {% for item in activity_summary %}
+                <a href="{{ item.url }}" class="activity-row">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="card account-card">
+        <h2>Notifications</h2>
+        <div class="account-grid">
+            {% for preference in notification_preferences %}
+                <div class="notification-row">
+                    <span class="notification-label">{{ preference.label }}</span>
+                    <span class="status-pill">{{ preference.value }}</span>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="card account-card" id="contact-settings">
+        <h2>Contact Settings</h2>
+        <div class="contact-section">
+            <p class="contact-helper-copy">Phone is the required contact method for other agents. Email is optional and only shown when you explicitly allow it.</p>
+            <div class="contact-block">
+                <h3 style="margin:0;">Email Addresses</h3>
+                <form method="post" action="{% url 'update_contact_visibility' %}" class="contact-visibility-form">
+                    {% csrf_token %}
+                    <label class="contact-visibility-row">
+                        <input type="checkbox" name="show_email_to_agents" {% if show_email_to_agents %}checked{% endif %}>
+                        <span>Show my verified primary email to other agents</span>
+                    </label>
+                    <div>
+                        <button type="submit" class="contact-link-button">Save Email Preference</button>
+                    </div>
+                </form>
+                <div class="contact-list">
+                    {% for agent_email in agent_emails %}
+                        <div class="contact-item">
+                            <div class="contact-item-main">
+                                <strong>{{ agent_email.email }}</strong>
+                                <div class="muted">
+                                    {% if agent_email.is_primary %}Primary{% else %}Secondary{% endif %}
+                                    ·
+                                    {% if agent_email.is_verified %}Verified{% else %}Pending verification{% endif %}
+                                    {% if agent_email.is_primary and show_email_to_agents and agent_email.is_verified %}
+                                        · Visible to other agents
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="contact-item-actions">
+                                {% if not agent_email.is_verified %}
+                                    <span class="status-pill">Verify from email</span>
+                                {% endif %}
+                                {% if agent_email.is_verified and not agent_email.is_primary %}
+                                    <form method="post" action="{% url 'make_primary_agent_email' agent_email.id %}" style="margin:0;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="contact-link-button">Set Primary</button>
+                                    </form>
+                                {% endif %}
+                                {% if not agent_email.is_primary %}
+                                    <form method="post" action="{% url 'remove_agent_email' agent_email.id %}" style="margin:0;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="contact-link-button is-danger">Remove</button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button
+                    type="button"
+                    class="contact-link-button"
+                    data-contact-toggle="new-email-form"
+                    {% if agent_email_form.email.errors %}hidden{% endif %}
+                >
+                    + New Email
+                </button>
+                <form
+                    method="post"
+                    action="{% url 'add_agent_email' %}"
+                    class="contact-inline-form"
+                    id="new-email-form"
+                    {% if not agent_email_form.email.errors %}hidden{% endif %}
+                >
+                    {% csrf_token %}
+                    {{ agent_email_form.email }}
+                    <button type="submit">Add Email</button>
+                </form>
+                {% if agent_email_form.email.errors %}
+                    <div class="field-errors">{{ agent_email_form.email.errors|striptags }}</div>
+                {% endif %}
+            </div>
+
+            <div class="contact-block">
+                <h3 style="margin:0;">Phone Numbers</h3>
+                {% if agent_phones %}
+                    <div class="contact-list">
+                        {% for phone in agent_phones %}
+                            <div class="contact-item">
+                                <div class="contact-item-main">
+                                    <strong>{{ phone.phone_number }}</strong>
+                                    <div class="muted">
+                                        {% if current_agent.primary_phone and current_agent.primary_phone.id == phone.id %}
+                                            Primary
+                                        {% else %}
+                                            Additional
+                                        {% endif %}
+                                    </div>
+                                    <div class="muted">Added {{ phone.created_at|date:"M j, Y" }}</div>
+                                    <form
+                                        method="post"
+                                        action="{% url 'update_agent_phone' phone.id %}"
+                                        class="contact-inline-form contact-item-edit"
+                                        id="edit-phone-form-{{ phone.id }}"
+                                        hidden
+                                    >
+                                        {% csrf_token %}
+                                        <input type="text" name="phone_number" value="{{ phone.phone_number }}" aria-label="Edit phone number">
+                                        <button type="submit" class="contact-link-button">Save</button>
+                                    </form>
+                                </div>
+                                <div class="contact-item-actions">
+                                    <button
+                                        type="button"
+                                        class="contact-link-button"
+                                        data-contact-toggle="edit-phone-form-{{ phone.id }}"
+                                    >
+                                        Change
+                                    </button>
+                                    <form method="post" action="{% url 'delete_agent_phone' phone.id %}" style="margin:0;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="contact-link-button is-danger">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted" style="margin:0;">No phone numbers yet.</p>
+                {% endif %}
+                <p class="contact-helper-copy">At least one phone number is required so agents can contact you from the board.</p>
+                <button
+                    type="button"
+                    class="contact-link-button"
+                    data-contact-toggle="new-phone-form"
+                    {% if agent_phone_form.phone_number.errors %}hidden{% endif %}
+                >
+                    + New Phone
+                </button>
+                <form
+                    method="post"
+                    action="{% url 'add_agent_phone' %}"
+                    class="contact-inline-form"
+                    id="new-phone-form"
+                    {% if not agent_phone_form.phone_number.errors %}hidden{% endif %}
+                >
+                    {% csrf_token %}
+                    {{ agent_phone_form.phone_number }}
+                    <button type="submit">Add Phone</button>
+                </form>
+                {% if agent_phone_form.phone_number.errors %}
+                    <div class="field-errors">{{ agent_phone_form.phone_number.errors|striptags }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="card account-card" id="settings">
+        <h2>Settings</h2>
+        <div class="account-action-row">
+            <form method="post" action="{% url 'logout_account' %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="logout-button">Log Out</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="card account-card danger-zone">
+        <h2>Danger Zone</h2>
+        <p class="muted" style="margin:0;">Deleting your membership removes access and takes your active posts off the live board.</p>
+        <div class="danger-actions">
+            <a href="{% url 'delete_account' %}" class="danger-link">Delete Membership</a>
+        </div>
+    </section>
+</section>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    (function () {
+        const appBody = document.querySelector(".account-app-shell");
+        const desktopToggle = document.getElementById("desktop-shell-toggle");
+
+        if (!appBody || !desktopToggle) {
+            return;
+        }
+
+        desktopToggle.addEventListener("click", function () {
+            const willExpand = !appBody.classList.contains("is-rail-expanded");
+            appBody.classList.toggle("is-rail-expanded", willExpand);
+            desktopToggle.setAttribute("aria-expanded", willExpand ? "true" : "false");
+        });
+
+        document.querySelectorAll("[data-contact-toggle]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                const targetId = button.getAttribute("data-contact-toggle");
+                const target = document.getElementById(targetId);
+                if (!target) {
+                    return;
+                }
+                target.hidden = false;
+                button.hidden = true;
+                const input = target.querySelector("input");
+                if (input) {
+                    input.focus();
+                }
+            });
+        });
+    }());
+</script>
+{% endblock %}

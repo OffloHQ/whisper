@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Email Verification | Whisper{% endblock %}
+
+{% block content %}
+<section class="card" style="display:grid; gap:0.9rem; max-width:32rem;">
+    <h1 style="margin:0;">Email Verification</h1>
+    <p class="muted" style="margin:0;">{{ message }}</p>
+    <a href="{% url 'account' %}" class="button-link" style="justify-self:start; text-decoration:none;">Back to Account</a>
+</section>
+{% endblock %}

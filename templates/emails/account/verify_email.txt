@@ -1,0 +1,5 @@
+Hi {{ agent_name }},
+
+Please verify your Whisper email.
+
+Verify email: {{ verification_url }}

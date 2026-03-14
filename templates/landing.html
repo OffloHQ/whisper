@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Whisper{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.access-gate-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.access-gate-card {
+    width: 100%;
+    max-width: 34rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo {
+    width: 92px;
+    height: auto;
+    display: block;
+    margin: 0 auto 1.25rem;
+}
+
+.access-card {
+    width: 100%;
+    text-align: center;
+}
+
+.access-card h1 {
+    font-size: 1.65rem;
+    line-height: 1.15;
+    margin: 0 0 1rem;
+}
+
+.access-gate-form {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.access-gate-actions {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.access-gate-form input {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 12px;
+    border: 1px solid rgba(31,26,20,0.15);
+    background: white;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.access-gate-form input:focus {
+    outline: none;
+    border-color: #1f1a14;
+    box-shadow: 0 0 0 2px rgba(31,26,20,0.08);
+}
+
+.access-gate-form button {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 999px;
+    border: none;
+    background: #1f1a14;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .05s ease, box-shadow .1s ease, opacity .15s ease;
+}
+
+.access-qr-trigger {
+    display: none;
+}
+
+.access-gate-form button:hover {
+    opacity: 0.92;
+}
+
+.access-gate-form button:active {
+    transform: translateY(1px);
+}
+
+.access-gate-helper {
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin: 0.75rem 0 0;
+}
+
+.access-gate-secondary {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0.15rem 0 0;
+}
+
+.access-gate-secondary a {
+    color: var(--text);
+}
+
+.access-gate-errors {
+    margin: 0 0 0.5rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(120,53,15,0.08);
+    color: #7c2d12;
+    font-size: 0.92rem;
+}
+
+.access-status-note {
+    margin: 0 0 1rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 14px;
+    background: rgba(31,26,20,0.05);
+    border: 1px solid rgba(31,26,20,0.08);
+    color: var(--text);
+    font-size: 0.93rem;
+}
+
+.dev-link-card {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border: 1px solid rgba(31,26,20,0.08);
+    border-radius: 14px;
+    background: rgba(31,26,20,0.03);
+    text-align: left;
+}
+
+.dev-link-card p {
+    margin: 0;
+}
+
+.dev-link-card a {
+    overflow-wrap: anywhere;
+}
+
+.qr-panel {
+    display: none;
+    gap: 0.8rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(31,26,20,0.08);
+    border-radius: 16px;
+    background: rgba(31,26,20,0.03);
+    text-align: center;
+}
+
+.qr-panel.is-visible {
+    display: grid;
+}
+
+.qr-panel img {
+    background: white;
+    border-radius: 14px;
+    display: block;
+    margin: 0 auto;
+    max-width: 220px;
+    padding: 0.65rem;
+    width: 100%;
+}
+
+.qr-panel p {
+    margin: 0;
+}
+
+.card {
+    border-radius: 18px;
+    border: 1px solid rgba(31,26,20,0.08);
+    box-shadow: 0 10px 22px rgba(31,26,20,0.06);
+}
+
+@media (min-width: 768px) {
+    .access-qr-trigger {
+        display: inline-flex;
+        width: 100%;
+        justify-content: center;
+        padding: 0.9rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(31,26,20,0.14);
+        background: rgba(255,255,255,0.55);
+        color: var(--text);
+        font-weight: 600;
+    }
+}
+
+@media (max-width: 640px) {
+    .access-gate-shell {
+        padding: 1.5rem 1rem;
+    }
+
+    .logo {
+        width: 84px;
+        margin-bottom: 1rem;
+    }
+
+    .access-card h1 {
+        font-size: 1.45rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="access-gate-shell">
+    <div class="access-gate-card">
+
+        <img src="{% static 'whisper/images/logo.svg' %}" alt="Whisper logo" class="logo">
+
+        <section class="card access-card">
+
+            <h1>Private board access for agents.</h1>
+
+            {% if status_notice %}
+            <div class="access-status-note">
+                {{ status_notice }}
+            </div>
+            {% endif %}
+
+            <form method="post" class="access-gate-form">
+                {% csrf_token %}
+                <input type="hidden" name="sign_in_method" id="sign-in-method" value="email">
+
+                {% if form.non_field_errors %}
+                <div class="access-gate-errors">
+                    {{ form.non_field_errors }}
+                </div>
+                {% endif %}
+
+                <div class="access-input-group">
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                    <div class="access-gate-errors" style="margin-top:0.5rem;">
+                        {{ form.email.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="access-gate-actions">
+                    <button type="submit" class="access-submit">
+                        Email Me a Sign-In Link
+                    </button>
+                    <button type="submit" class="access-qr-trigger" id="qr-trigger">
+                        Use QR instead
+                    </button>
+                </div>
+            </form>
+
+            <p class="access-gate-helper">
+                No password required.
+            </p>
+
+            <p class="access-gate-secondary">
+                Need access?
+                <a href="{{ request_access_url }}">Request access</a>
+            </p>
+
+            {% if dev_sign_in_link %}
+            <section class="dev-link-card">
+                <strong>Dev Sign-In Link</strong>
+                <p class="muted">
+                    Local development only. Open this secure sign-in link directly
+                    if outbound email is not configured.
+                </p>
+                <a href="{{ dev_sign_in_link }}">
+                    {{ dev_sign_in_link }}
+                </a>
+            </section>
+            {% endif %}
+
+            <section class="qr-panel{% if qr_panel %} is-visible{% endif %}" id="qr-panel" {% if qr_panel %}data-qr-poll-url="{{ qr_panel.poll_url }}"{% endif %}>
+                <strong>Use QR instead</strong>
+                <p class="muted">Scan with your phone to sign in.</p>
+                {% if qr_panel %}
+                <img src="{{ qr_panel.image_url }}" alt="QR sign-in code">
+                <p class="muted">Expires at {{ qr_panel.expires_at|date:"g:i A" }}.</p>
+                <p class="muted" id="qr-status-copy">Waiting for scan...</p>
+                {% endif %}
+            </section>
+
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    (function () {
+        const qrTrigger = document.getElementById("qr-trigger");
+        const signInMethod = document.getElementById("sign-in-method");
+        const qrPanel = document.getElementById("qr-panel");
+        const qrStatusCopy = document.getElementById("qr-status-copy");
+
+        if (qrTrigger && signInMethod) {
+            qrTrigger.addEventListener("click", function () {
+                signInMethod.value = "qr";
+            });
+        }
+
+        if (!qrPanel || !qrPanel.dataset.qrPollUrl) {
+            return;
+        }
+
+        const pollUrl = qrPanel.dataset.qrPollUrl;
+        const poll = function () {
+            window.fetch(pollUrl, {headers: {"X-Requested-With": "XMLHttpRequest"}})
+                .then(function (response) { return response.json(); })
+                .then(function (payload) {
+                    if (payload.status === "authenticated" && payload.redirect_url) {
+                        window.location.href = payload.redirect_url;
+                        return;
+                    }
+                    if (payload.status === "expired") {
+                        if (qrStatusCopy) {
+                            qrStatusCopy.textContent = "This QR code expired. Try again.";
+                        }
+                        return;
+                    }
+                    window.setTimeout(poll, 2000);
+                })
+                .catch(function () {
+                    window.setTimeout(poll, 3000);
+                });
+        };
+
+        window.setTimeout(poll, 2000);
+    }());
+</script>
+{% endblock %}

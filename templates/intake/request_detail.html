@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Intake Request | Whisper{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<section class="card" style="display:grid; gap:1rem; margin:2rem auto 0; max-width:60rem;">
+    <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center;">
+        <div>
+            <h1 style="margin:0;">{{ access_request.full_name|default:access_request.email }}</h1>
+            <p class="muted" style="margin:0.35rem 0 0;">{{ access_request.email }}</p>
+        </div>
+        <a href="{% if access_request.queue_type == 'manual_review' %}{% url 'intake_manual_review' %}{% else %}{% url 'intake_waitlist' %}{% endif %}" style="text-decoration:none;">Back</a>
+    </div>
+    <div class="card" style="margin:0;">
+        <div>Status: {{ access_request.get_decision_status_display }}</div>
+        <div>Queue: {{ access_request.get_queue_type_display|default:"-" }}</div>
+        <div>Reason: {{ access_request.get_reason_code_display|default:"-" }}</div>
+        <div>Verification: {{ access_request.get_verification_status_display }}</div>
+        <div>Provider: {{ access_request.verification_provider|default:"-" }}</div>
+        <div>State: {{ access_request.state|default:"-" }}</div>
+        <div>County: {{ access_request.county|default:"-" }}</div>
+        <div>Borough: {{ access_request.borough|default:"-" }}</div>
+        <div>Market Area: {{ access_request.market_area|default:"-" }}</div>
+        <div>License Number: {{ access_request.license_number|default:"-" }}</div>
+        <div>Verification Attempted: {% if access_request.verification_attempted_at %}{{ access_request.verification_attempted_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+        <div>Reviewed At: {% if access_request.reviewed_at %}{{ access_request.reviewed_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+        <div>Reviewed By: {% if access_request.reviewed_by %}{{ access_request.reviewed_by.get_username }}{% else %}-{% endif %}</div>
+        <div>Approval Email Sent: {% if access_request.approval_email_sent_at %}{{ access_request.approval_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+        <div>Rejection Email Sent: {% if access_request.rejection_email_sent_at %}{{ access_request.rejection_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+        <div>Waitlist Email Sent: {% if access_request.waitlist_email_sent_at %}{{ access_request.waitlist_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+        <div>Last Notification: {{ access_request.get_last_notification_type_display|default:"-" }}{% if access_request.last_notification_sent_at %} · {{ access_request.last_notification_sent_at|date:"M j, Y g:i A" }}{% endif %}</div>
+        <div>Review Notes: {{ access_request.manual_decision_reason|default:"-" }}</div>
+    </div>
+    {% if access_request.verification_payload %}
+        <div class="card" style="margin:0;">
+            <strong>Verification Payload Summary</strong>
+            <pre style="white-space:pre-wrap; overflow-wrap:anywhere; margin:0.75rem 0 0;">{{ access_request.verification_payload }}</pre>
+        </div>
+    {% endif %}
+    {% if access_request.queue_type == 'manual_review' %}
+        <div style="display:grid; gap:0.75rem; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
+            <form method="post" action="{% url 'intake_verify_request' access_request.id %}" class="card" style="margin:0;">
+                {% csrf_token %}
+                <label for="verify-reason">Review note</label>
+                <textarea id="verify-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
+                <button type="submit" style="margin-top:0.75rem;">Verify</button>
+            </form>
+            <form method="post" action="{% url 'intake_reject_request' access_request.id %}" class="card" style="margin:0;">
+                {% csrf_token %}
+                <label for="reject-reason">Rejection reason</label>
+                <textarea id="reject-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
+                <button type="submit" style="margin-top:0.75rem;">Reject</button>
+            </form>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

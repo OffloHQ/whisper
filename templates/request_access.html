@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Request Access{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.access-gate-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.access-gate-card {
+    width: 100%;
+    max-width: 34rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo {
+    width: 92px;
+    height: auto;
+    display: block;
+    margin: 0 auto 1.25rem;
+}
+
+.access-card {
+    width: 100%;
+    text-align: center;
+}
+
+.access-card h1 {
+    font-size: 1.65rem;
+    line-height: 1.15;
+    margin: 0 0 1rem;
+}
+
+.access-gate-form {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.access-gate-form input {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 12px;
+    border: 1px solid rgba(31,26,20,0.15);
+    background: white;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.access-gate-form input::placeholder {
+    color: rgba(31,26,20,0.45);
+}
+
+.access-gate-form input:focus {
+    outline: none;
+    border-color: #1f1a14;
+    box-shadow: 0 0 0 2px rgba(31,26,20,0.08);
+}
+
+.access-gate-form button {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 999px;
+    border: none;
+    background: #1f1a14;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .05s ease, box-shadow .1s ease, opacity .15s ease;
+}
+
+.access-gate-form button:hover {
+    opacity: 0.92;
+}
+
+.access-gate-form button:active {
+    transform: translateY(1px);
+}
+
+.access-gate-secondary {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0.6rem 0 0;
+}
+
+.access-gate-secondary a {
+    color: var(--text);
+}
+
+.access-gate-errors {
+    margin: 0 0 0.5rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(120,53,15,0.08);
+    color: #7c2d12;
+    font-size: 0.92rem;
+}
+
+.card {
+    border-radius: 18px;
+    border: 1px solid rgba(31,26,20,0.08);
+    box-shadow: 0 10px 22px rgba(31,26,20,0.06);
+}
+
+.dev-link-card {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border: 1px solid rgba(31,26,20,0.08);
+    border-radius: 14px;
+    background: rgba(31,26,20,0.03);
+    text-align: left;
+}
+
+.dev-link-card p {
+    margin: 0;
+}
+
+.dev-link-card a {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .access-gate-shell {
+        padding: 1.5rem 1rem;
+    }
+
+    .logo {
+        width: 84px;
+        margin-bottom: 1rem;
+    }
+
+    .access-card h1 {
+        font-size: 1.45rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="access-gate-shell">
+    <div class="access-gate-card">
+
+        <img src="{% static 'whisper/images/logo.svg' %}" alt="Whisper logo" class="logo">
+
+        <section class="card access-card">
+
+            <h1>Request access to Whisper</h1>
+
+            <form method="post" class="access-gate-form">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div class="access-gate-errors">
+                    {{ form.non_field_errors }}
+                </div>
+                {% endif %}
+
+                <div>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                    <div class="access-gate-errors" style="margin-top:0.5rem;">
+                        {{ form.email.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <button type="submit">
+                    Send Signup Link
+                </button>
+            </form>
+
+            <p class="access-gate-secondary">
+                <a href="{% url 'landing' %}">Back to sign in</a>
+            </p>
+
+            {% if dev_signup_link %}
+            <section class="dev-link-card">
+                <strong>Dev Signup Link</strong>
+                <p class="muted">
+                    Local development only. Open this secure signup link directly
+                    if outbound email is unavailable.
+                </p>
+                <a href="{{ dev_signup_link }}">
+                    {{ dev_signup_link }}
+                </a>
+            </section>
+            {% endif %}
+
+        </section>
+    </div>
+</section>
+{% endblock %}

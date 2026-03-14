@@ -1,0 +1,48 @@
+<aside class="desktop-nav-shell" aria-label="Desktop navigation">
+    <div class="desktop-app-panel" id="desktop-app-panel">
+        <div class="desktop-app-panel-body" id="desktop-app-panel-body">
+            <a class="desktop-panel-link{% if desktop_shell_active == 'feed' %} is-active{% endif %}" href="{% url 'feed' %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 11.5 12 4l9 7.5"></path>
+                    <path d="M5 10.5V20h14v-9.5"></path>
+                </svg>
+                <span class="desktop-panel-link-label">Feed</span>
+            </a>
+            <a class="desktop-panel-link{% if desktop_shell_active == 'workspace' %} is-active{% endif %}" href="{% url 'workspace' %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="7" height="7" rx="1.5"></rect>
+                    <rect x="13" y="4" width="7" height="7" rx="1.5"></rect>
+                    <rect x="4" y="13" width="7" height="7" rx="1.5"></rect>
+                    <rect x="13" y="13" width="7" height="7" rx="1.5"></rect>
+                </svg>
+                <span class="desktop-panel-link-label">Workspace</span>
+            </a>
+        </div>
+        <div class="desktop-panel-lower">
+            <a href="{% url 'account' %}" class="desktop-panel-link{% if desktop_shell_active == 'account' %} is-active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="3.5"></circle>
+                    <path d="M5 20c1.6-3.4 4-5 7-5s5.4 1.6 7 5"></path>
+                </svg>
+                <span class="desktop-panel-link-label">Account</span>
+            </a>
+            <a href="{% url 'logout_account' %}" class="desktop-panel-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 17 15 12 10 7"></path>
+                    <path d="M15 12H4"></path>
+                    <path d="M20 4v16"></path>
+                </svg>
+                <span class="desktop-panel-link-label">Log Out</span>
+            </a>
+            <div class="desktop-panel-footer">
+                <a href="{% url 'account' %}" class="desktop-panel-account" style="color:inherit; text-decoration:none;">
+                    <span class="desktop-panel-avatar">{{ current_agent_initials|default:"WW" }}</span>
+                    <div class="desktop-panel-footer-detail">
+                        <div>{{ current_agent.name|default:"Whisper Agent" }}</div>
+                        <div class="desktop-panel-footer-copy">{{ current_agent_membership|default:"Member" }}</div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</aside>

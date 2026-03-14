@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% load listing_extras %}
+
+{% block title %}{{ collection.name }}{% endblock %}
+{% block app_body_class %}workspace-app-shell with-desktop-shell{% endblock %}
+
+{% block app_header_brand_control %}
+<button
+    type="button"
+    class="desktop-shell-toggle"
+    id="desktop-shell-toggle"
+    aria-label="Toggle navigation panel"
+    aria-expanded="false"
+>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h16"></path>
+    </svg>
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .workspace-app-shell main {
+        max-width: none;
+    }
+    .workspace-detail-shell {
+        max-width: 980px;
+    }
+    .account-overlay {
+        background: rgba(31, 26, 20, 0.32);
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+        position: fixed;
+        transition: opacity 160ms ease;
+        z-index: 40;
+    }
+    .account-overlay.is-open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .account-overlay-backdrop {
+        inset: 0;
+        position: absolute;
+    }
+    .account-sheet {
+        background: rgba(255, 252, 246, 0.98);
+        border-left: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 28px 0 0 28px;
+        bottom: 0;
+        box-shadow: -18px 0 40px rgba(31, 26, 20, 0.14);
+        max-width: 420px;
+        overflow-y: auto;
+        padding: 1.3rem 1.15rem 1.6rem;
+        position: absolute;
+        right: 0;
+        top: 0;
+        transform: translateX(100%);
+        transition: transform 180ms ease;
+        width: min(100vw, 420px);
+    }
+    .account-overlay.is-open .account-sheet {
+        transform: translateX(0);
+    }
+    .drawer-header {
+        align-items: flex-start;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .drawer-header h2 {
+        margin: 0;
+    }
+    .drawer-header p {
+        color: var(--muted);
+        margin: 0.35rem 0 0;
+    }
+    .drawer-close {
+        align-items: center;
+        background: rgba(31, 26, 20, 0.06);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        color: var(--text);
+        display: inline-flex;
+        height: 2.2rem;
+        justify-content: center;
+        padding: 0;
+        width: 2.2rem;
+    }
+    .account-summary {
+        align-items: center;
+        display: flex;
+        gap: 0.8rem;
+        margin-top: 1rem;
+    }
+    .account-avatar {
+        align-items: center;
+        background: rgba(31, 26, 20, 0.12);
+        border-radius: 999px;
+        display: inline-flex;
+        font-weight: 700;
+        height: 2.6rem;
+        justify-content: center;
+        width: 2.6rem;
+    }
+    @media (min-width: 768px) {
+        .workspace-app-shell main {
+            padding: 2rem 2rem 4rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block app_body_sidebar %}
+{% include "includes/desktop_app_shell.html" with desktop_shell_active="workspace" %}
+{% endblock %}
+
+{% block content %}
+<div class="workspace-detail-shell">
+<section class="card" style="display:grid; gap:1rem;">
+    <div>
+        <p class="muted" style="margin:0 0 0.35rem;"><a href="{% url 'workspace' %}?section=collections" style="color:inherit; text-decoration:none;">Workspace</a> / Collection</p>
+        <h1 style="margin:0;">{{ collection.name }}</h1>
+    </div>
+    <p class="muted" style="margin:0;">{{ collection_summary }}</p>
+</section>
+
+<section class="card" style="display:grid; gap:1rem; margin-top:1rem;">
+    <h2 style="margin:0;">Listings</h2>
+    {% if collection_items %}
+        <div style="display:grid; gap:0.85rem;">
+            {% for item in collection_items %}
+                <article class="card" style="display:grid; gap:0.45rem; margin:0;">
+                    <h2 style="margin:0;">{{ item.listing.title }}</h2>
+                    <p class="muted" style="margin:0;">{{ item.listing.city }} | {{ item.listing.beds }} bed / {{ item.listing.baths }} bath</p>
+                    <p class="listing-price" style="margin:0;">{{ item.listing.price_min|compact_price }} &ndash; {{ item.listing.price_max|compact_price }}</p>
+                    <p class="muted" style="margin:0;">{{ item.listing.get_stage_display }}</p>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="muted" style="margin:0;">No listings have been added to this collection yet.</p>
+    {% endif %}
+</section>
+</div>
+{% endblock %}
+
+{% block app_body_overlay %}
+{% include "includes/account_overlay.html" %}
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    (function () {
+        const appBody = document.querySelector(".workspace-app-shell");
+        const desktopToggle = document.getElementById("desktop-shell-toggle");
+        const accountOverlay = document.getElementById("account-overlay");
+
+        function setDesktopRailState(isExpanded) {
+            if (!appBody || !desktopToggle) {
+                return;
+            }
+            appBody.classList.toggle("is-rail-expanded", isExpanded);
+            desktopToggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+        }
+
+        function setOverlayState(overlay, isOpen) {
+            if (!overlay) {
+                return;
+            }
+            overlay.classList.toggle("is-open", isOpen);
+            overlay.setAttribute("aria-hidden", isOpen ? "false" : "true");
+        }
+
+        if (desktopToggle) {
+            desktopToggle.addEventListener("click", function () {
+                setDesktopRailState(!appBody.classList.contains("is-rail-expanded"));
+            });
+        }
+
+        document.querySelectorAll(".open-account-panel").forEach(function (button) {
+            button.addEventListener("click", function () {
+                setOverlayState(accountOverlay, true);
+            });
+        });
+
+        document.querySelectorAll("[data-close-overlay='account-overlay']").forEach(function (button) {
+            button.addEventListener("click", function () {
+                setOverlayState(accountOverlay, false);
+            });
+        });
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                setOverlayState(accountOverlay, false);
+            }
+        });
+    }());
+</script>
+{% endblock %}

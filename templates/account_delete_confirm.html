@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Membership | Whisper{% endblock %}
+{% block app_body_class %}account-app-shell with-desktop-shell{% endblock %}
+
+{% block app_header_brand_control %}
+<button
+    type="button"
+    class="desktop-shell-toggle"
+    id="desktop-shell-toggle"
+    aria-label="Toggle navigation panel"
+    aria-expanded="false"
+>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h16"></path>
+    </svg>
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .account-app-shell main {
+        max-width: none;
+    }
+    .delete-shell {
+        display: grid;
+        gap: 1rem;
+        max-width: 720px;
+    }
+    .delete-shell h1 {
+        margin: 0;
+    }
+    .delete-card {
+        display: grid;
+        gap: 1rem;
+    }
+    .delete-list {
+        display: grid;
+        gap: 0.5rem;
+        margin: 0;
+        padding-left: 1.2rem;
+    }
+    .delete-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+    .delete-cancel {
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text);
+        display: inline-flex;
+        padding: 0.8rem 1rem;
+        text-decoration: none;
+    }
+    .field-errors {
+        color: #7a4b00;
+        font-size: 0.9rem;
+    }
+    @media (min-width: 768px) {
+        .account-app-shell main {
+            padding: 2rem 2rem 4rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block app_body_sidebar %}
+{% include "includes/desktop_app_shell.html" with desktop_shell_active="account" %}
+{% endblock %}
+
+{% block content %}
+<section class="delete-shell">
+    <header>
+        <h1>{{ page_title }}</h1>
+        <p class="muted" style="margin:0.4rem 0 0;">This is significant. Access will be removed and your active posts will no longer appear on the board.</p>
+    </header>
+
+    <section class="card delete-card">
+        <h2 style="margin:0;">Before you continue</h2>
+        <ul class="delete-list">
+            <li>You will lose access to the internal agent workspace.</li>
+            <li>Your active opportunities will be removed from the live board.</li>
+            <li>Saved items and collections will no longer be visible through this account.</li>
+        </ul>
+        <form method="post" style="display:grid; gap:0.85rem;">
+            {% csrf_token %}
+            <div class="form-row">
+                <label for="{{ deletion_form.confirm_text.id_for_label }}">{{ deletion_form.confirm_text.label }}</label>
+                {{ deletion_form.confirm_text }}
+                {% if deletion_form.confirm_text.errors %}
+                    <div class="field-errors">{{ deletion_form.confirm_text.errors|striptags }}</div>
+                {% endif %}
+            </div>
+            <div class="delete-actions">
+                <button type="submit">Confirm Delete Membership</button>
+                <a href="{% url 'account' %}" class="delete-cancel">Cancel</a>
+            </div>
+        </form>
+    </section>
+</section>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    (function () {
+        const appBody = document.querySelector(".account-app-shell");
+        const desktopToggle = document.getElementById("desktop-shell-toggle");
+
+        if (!appBody || !desktopToggle) {
+            return;
+        }
+
+        desktopToggle.addEventListener("click", function () {
+            const willExpand = !appBody.classList.contains("is-rail-expanded");
+            appBody.classList.toggle("is-rail-expanded", willExpand);
+            desktopToggle.setAttribute("aria-expanded", willExpand ? "true" : "false");
+        });
+    }());
+</script>
+{% endblock %}

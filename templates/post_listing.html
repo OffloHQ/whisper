@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title|default:"Post Listing" }}{% endblock %}
+
+{% block content %}
+<h1>{{ page_title|default:"Post a Listing" }}</h1>
+
+<div class="card">
+    {% include "includes/listing_form.html" with form_action=form_action|default:request.path submit_label=submit_label %}
+</div>
+{% endblock %}

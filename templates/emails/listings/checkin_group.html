@@ -1,0 +1,18 @@
+<p>Hi {{ agent_name }},</p>
+<p>Just a quick Whisper check-in.</p>
+<p>Are these listings still available?</p>
+{% for listing in listings %}
+<p>
+    <strong>{{ listing.descriptor }}</strong><br>
+    State: {{ listing.state_label }}<br>
+    Last validated:
+    {% if listing.is_required %}
+        <strong>{{ listing.last_validated_label }}</strong>
+    {% else %}
+        {{ listing.last_validated_label }}
+    {% endif %}
+    <br>
+    <a href="{{ listing.confirm_url }}">{{ listing.primary_action_label }}</a> |
+    <a href="{{ listing.remove_url }}">NO remove listing</a>
+</p>
+{% endfor %}

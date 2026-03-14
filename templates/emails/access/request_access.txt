@@ -1,0 +1,6 @@
+Whisper access is ready for you.
+
+Complete signup:
+{{ signup_url }}
+
+This secure link will expire.

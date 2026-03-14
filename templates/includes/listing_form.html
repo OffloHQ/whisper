@@ -1,0 +1,13 @@
+<form method="post" action="{{ form_action|default:'' }}" class="listing-form">
+    {% csrf_token %}
+    {% for field in form %}
+        <div class="form-row">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}
+                <div class="field-errors">{{ field.errors|striptags }}</div>
+            {% endif %}
+        </div>
+    {% endfor %}
+    <button type="submit">{{ submit_label|default:"Submit Listing" }}</button>
+</form>

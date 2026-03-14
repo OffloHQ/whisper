@@ -1,0 +1,21 @@
+<div class="account-overlay" id="account-overlay" aria-hidden="true">
+    <div class="account-overlay-backdrop" data-close-overlay="account-overlay"></div>
+    <section class="account-sheet" aria-label="Settings">
+        <div class="drawer-header">
+            <div>
+                <h2>Settings</h2>
+                <p>Your private Whisper profile and workspace access.</p>
+            </div>
+            <button type="button" class="drawer-close" data-close-overlay="account-overlay" aria-label="Close settings panel">
+                &times;
+            </button>
+        </div>
+        <div class="account-summary">
+            <span class="account-avatar">{{ current_agent_initials|default:"WW" }}</span>
+            <div>
+                <div>{{ current_agent.name|default:"Whisper Agent" }}</div>
+                <div class="muted">{{ current_agent_membership|default:"Member" }}</div>
+            </div>
+        </div>
+    </section>
+</div>

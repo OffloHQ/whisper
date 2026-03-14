@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Whisper Listings{% endblock %}</title>
+    <style>
+        :root {
+            --page-bg: linear-gradient(180deg, #f7f4ee 0%, #f0ece3 100%);
+            --surface: rgba(255, 252, 246, 0.95);
+            --surface-strong: #ffffff;
+            --border: #d6cec0;
+            --text: #1f1a14;
+            --muted: #6c6257;
+            --accent: #1f1a14;
+            --accent-soft: #ede5d7;
+            --warning-bg: #fff4e5;
+            --warning-border: #f0c36d;
+            --warning-text: #7a4b00;
+            --shadow: 0 18px 45px rgba(31, 26, 20, 0.12);
+        }
+        body {
+            font-family: Georgia, "Times New Roman", serif;
+            background: var(--page-bg);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+        }
+        header {
+            background: rgba(255, 252, 246, 0.92);
+            backdrop-filter: blur(14px);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 1.25rem;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+        nav {
+            align-items: center;
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            margin: 0 auto;
+            max-width: 1080px;
+        }
+        .brand-wrap {
+            align-items: center;
+            display: flex;
+            gap: 0.55rem;
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+        }
+        .mobile-account-entry {
+            align-items: center;
+            background: rgba(31, 26, 20, 0.08);
+            border: 0;
+            border-radius: 999px;
+            color: var(--text);
+            display: inline-flex;
+            height: 2.15rem;
+            justify-content: center;
+            padding: 0;
+            width: 2.15rem;
+        }
+        .mobile-account-avatar {
+            align-items: center;
+            border-radius: 999px;
+            display: inline-flex;
+            font-size: 0.78rem;
+            font-weight: 700;
+            height: 100%;
+            justify-content: center;
+            width: 100%;
+        }
+        .desktop-nav-link {
+            display: none;
+        }
+        nav a {
+            color: var(--text);
+            text-decoration: none;
+        }
+        .brand {
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .button-link {
+            background: var(--accent);
+            border-radius: 999px;
+            color: #fff;
+            padding: 0.7rem 1rem;
+        }
+        .desktop-shell-toggle,
+        .desktop-nav-shell {
+            display: none;
+        }
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 1.25rem 1rem 3rem;
+        }
+        .app-body {
+            position: relative;
+        }
+        .app-workspace-shell {
+            position: relative;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            padding: 1.1rem;
+            margin-bottom: 1rem;
+        }
+        form p {
+            margin-bottom: 1rem;
+        }
+        form label {
+            display: block;
+            font-size: 0.92rem;
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.65rem;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-sizing: border-box;
+            background: var(--surface-strong);
+            color: var(--text);
+            font: inherit;
+        }
+        button {
+            background: var(--accent);
+            border: 0;
+            border-radius: 999px;
+            color: #fff;
+            cursor: pointer;
+            font: inherit;
+            padding: 0.8rem 1.15rem;
+        }
+        .muted {
+            color: var(--muted);
+        }
+        .toast-stack {
+            bottom: 1.25rem;
+            display: grid;
+            gap: 0.75rem;
+            left: 50%;
+            max-width: min(92vw, 34rem);
+            pointer-events: none;
+            position: fixed;
+            transform: translateX(-50%);
+            width: calc(100vw - 2rem);
+            z-index: 60;
+        }
+        .toast {
+            background: rgba(24, 21, 18, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 18px;
+            box-shadow: 0 16px 38px rgba(0, 0, 0, 0.18);
+            color: #f7f4ee;
+            opacity: 1;
+            padding: 0.95rem 1.1rem;
+            pointer-events: auto;
+            transition: opacity 180ms ease, transform 180ms ease;
+        }
+        .toast.is-hiding {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        .toast.success,
+        .toast.error,
+        .toast.warning,
+        .toast.info {
+            color: #f7f4ee;
+        }
+        @media (min-width: 768px) {
+            header {
+                padding: 1rem 2rem;
+            }
+            .mobile-account-entry {
+                display: none;
+            }
+            .desktop-nav-link {
+                display: inline-flex;
+            }
+            .app-body.with-desktop-shell {
+                align-items: start;
+                display: grid;
+                grid-template-columns: auto 1fr;
+            }
+            .desktop-shell-toggle {
+                align-items: center;
+                background: rgba(31, 26, 20, 0.06);
+                border: 1px solid rgba(31, 26, 20, 0.08);
+                border-radius: 999px;
+                color: var(--text);
+                display: inline-flex;
+                height: 2.2rem;
+                justify-content: center;
+                padding: 0;
+                width: 2.2rem;
+            }
+            .desktop-shell-toggle svg {
+                height: 1rem;
+                width: 1rem;
+            }
+            .desktop-nav-shell {
+                align-self: start;
+                background: transparent;
+                border-right: 1px solid rgba(31, 26, 20, 0.08);
+                display: flex;
+                height: calc(100vh - 74px);
+                min-height: 0;
+                overflow: hidden;
+                position: sticky;
+                top: 74px;
+                transition: width 180ms ease;
+                width: 64px;
+            }
+            .app-body.is-rail-expanded .desktop-nav-shell {
+                width: 132px;
+            }
+            .desktop-app-panel {
+                display: flex;
+                flex-direction: column;
+                gap: 0.65rem;
+                height: 100%;
+                min-height: 0;
+                padding: 0.8rem 0.5rem;
+                width: 100%;
+            }
+            .desktop-app-panel-body {
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+            .desktop-panel-lower {
+                display: grid;
+                gap: 0.85rem;
+                margin-top: auto;
+                padding-bottom: 1.35rem;
+            }
+            .desktop-panel-link {
+                align-items: center;
+                background: transparent;
+                border-radius: 12px;
+                color: rgba(31, 26, 20, 0.78);
+                display: flex;
+                gap: 0.65rem;
+                padding: 0.65rem;
+                text-decoration: none;
+                transition: background 160ms ease, color 160ms ease;
+            }
+            .desktop-panel-link:hover,
+            .desktop-panel-link.is-active {
+                background: rgba(31, 26, 20, 0.04);
+                color: var(--text);
+            }
+            .desktop-panel-link svg {
+                flex: 0 0 auto;
+                height: 0.95rem;
+                width: 0.95rem;
+            }
+            .desktop-panel-link-label,
+            .desktop-panel-footer-detail {
+                opacity: 0;
+                transform: translateX(-4px);
+                transition: opacity 140ms ease, transform 140ms ease;
+                white-space: nowrap;
+            }
+            .app-body.is-rail-expanded .desktop-panel-link-label,
+            .app-body.is-rail-expanded .desktop-panel-footer-detail {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            .desktop-panel-footer {
+                border-top: 1px solid rgba(31, 26, 20, 0.08);
+                padding-top: 0.65rem;
+            }
+            .desktop-panel-account {
+                align-items: center;
+                display: flex;
+                gap: 0.55rem;
+            }
+            .desktop-panel-avatar {
+                align-items: center;
+                background: rgba(31, 26, 20, 0.12);
+                border-radius: 999px;
+                display: inline-flex;
+                flex: 0 0 auto;
+                font-size: 0.74rem;
+                font-weight: 700;
+                height: 1.95rem;
+                justify-content: center;
+                width: 1.95rem;
+            }
+            .desktop-panel-footer-copy {
+                color: var(--muted);
+                font-size: 0.78rem;
+            }
+            main {
+                padding: 2rem 1.5rem 4rem;
+            }
+            .card {
+                padding: 1.4rem;
+            }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% block page_header %}
+    <header>
+        <nav>
+            <div class="brand-wrap">
+                {% block app_header_brand_control %}{% endblock %}
+                <a class="brand" href="{% url 'feed' %}">Whisper</a>
+            </div>
+            <div class="nav-links">
+                <a class="desktop-nav-link" href="{% url 'feed' %}">Feed</a>
+                <a class="button-link desktop-nav-link" href="{% url 'post_listing' %}">Post Listing</a>
+                <a href="{% url 'account' %}" class="mobile-account-entry" aria-label="Open account">
+                    <span class="mobile-account-avatar">{{ current_agent_initials|default:"WW" }}</span>
+                </a>
+            </div>
+        </nav>
+    </header>
+    {% endblock %}
+    <div class="app-body {% block app_body_class %}{% endblock %}">
+        {% block app_body_sidebar %}{% endblock %}
+        <div class="app-workspace-shell">
+            <main>
+                {% if messages %}
+                    <div class="toast-stack" aria-live="polite" aria-atomic="true">
+                        {% for message in messages %}
+                            <div class="toast {% if message.tags %}{{ message.tags }}{% endif %}" data-toast>{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {% block content %}{% endblock %}
+            </main>
+            {% block app_body_overlay %}{% endblock %}
+        </div>
+    </div>
+    <script>
+        (function () {
+            const toasts = document.querySelectorAll("[data-toast]");
+            if (!toasts.length) {
+                return;
+            }
+            window.setTimeout(function () {
+                toasts.forEach(function (toast) {
+                    toast.classList.add("is-hiding");
+                    window.setTimeout(function () {
+                        toast.remove();
+                    }, 220);
+                });
+            }, 4200);
+        }());
+    </script>
+    {% block extra_body %}{% endblock %}
+</body>
+</html>

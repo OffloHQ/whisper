@@ -1,0 +1,14 @@
+Hi {{ agent_name }},
+
+Just a quick Whisper check-in.
+
+Are these listings still available?
+
+{% for listing in listings %}{{ listing.descriptor }}
+State: {{ listing.state_label }}
+Last validated: {{ listing.last_validated_label }}
+{{ listing.primary_action_label }}: {{ listing.confirm_url }}
+NO remove listing: {{ listing.remove_url }}
+{% if not forloop.last %}
+
+{% endif %}{% endfor %}

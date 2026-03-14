@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Wait List | Whisper{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<section class="card" style="display:grid; gap:1rem; margin:2rem auto 0;">
+    <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center;">
+        <div>
+            <h1 style="margin:0;">Wait List</h1>
+            <p class="muted" style="margin:0.35rem 0 0;">Geographies Whisper does not support yet.</p>
+        </div>
+        <a href="{% url 'intake_home' %}" style="text-decoration:none;">Back</a>
+    </div>
+    <div style="display:grid; gap:0.75rem;">
+        {% for access_request in requests %}
+            <article class="card" style="margin:0;">
+                <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
+                    <div style="display:grid; gap:0.25rem;">
+                        <strong>{{ access_request.full_name|default:access_request.email }}</strong>
+                        <div class="muted">{{ access_request.email }}</div>
+                        <div class="muted">{{ access_request.state }}{% if access_request.county %} · {{ access_request.county }}{% endif %}{% if access_request.borough %} · {{ access_request.borough }}{% endif %}{% if access_request.market_area %} · {{ access_request.market_area }}{% endif %}</div>
+                        <div>Reason: {{ access_request.get_reason_code_display|default:"-" }}</div>
+                        <div>Waitlist email: {% if access_request.waitlist_email_sent_at %}{{ access_request.waitlist_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+                    </div>
+                    <a href="{% url 'intake_request_detail' access_request.id %}">Open</a>
+                </div>
+            </article>
+        {% empty %}
+            <p class="muted" style="margin:0;">No wait list requests right now.</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

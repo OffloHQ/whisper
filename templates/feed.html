@@ -1,0 +1,864 @@
+{% extends "base.html" %}
+{% load listing_extras %}
+
+{% block title %}Current Opportunities | Whisper{% endblock %}
+
+{% block app_body_class %}feed-app-shell with-desktop-shell{% endblock %}
+
+{% block extra_head %}
+<style>
+    .feed-app-shell {
+        min-height: calc(100vh - 74px);
+    }
+    .feed-app-shell .app-workspace-shell {
+        min-height: calc(100vh - 74px);
+    }
+    .feed-app-shell main {
+        box-sizing: border-box;
+        margin: 0;
+        max-width: none;
+        padding: 1.25rem 1rem 6.5rem;
+        transition: margin-left 180ms ease;
+    }
+    .board-shell {
+        display: block;
+    }
+    .board-column {
+        max-width: 1120px;
+        width: 100%;
+    }
+    .content-brand {
+        color: #6f6256;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        margin: 0 0 0.35rem;
+        text-transform: uppercase;
+    }
+    .board-header {
+        margin-bottom: 1.1rem;
+    }
+    .board-header-top {
+        align-items: flex-start;
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+    }
+    .board-copy h1 {
+        font-size: 2rem;
+        line-height: 1.05;
+        margin: 0;
+    }
+    .board-copy p {
+        color: var(--muted);
+        font-size: 0.98rem;
+        line-height: 1.5;
+        margin: 0.35rem 0 0;
+        max-width: 44rem;
+    }
+    .board-toolbar {
+        align-items: center;
+        display: none;
+        gap: 0.75rem;
+        justify-content: space-between;
+        margin: 0.7rem 0 0.2rem;
+    }
+    .board-toolbar-group {
+        align-items: center;
+        display: flex;
+        gap: 0.75rem;
+    }
+    .toolbar-button,
+    .toolbar-sort {
+        align-items: center;
+        background: rgba(255, 252, 246, 0.92);
+        border: 1px solid rgba(31, 26, 20, 0.12);
+        border-radius: 999px;
+        color: var(--text);
+        cursor: pointer;
+        display: inline-flex;
+        gap: 0.45rem;
+        padding: 0.72rem 1rem;
+        text-decoration: none;
+    }
+    .toolbar-button svg,
+    .toolbar-sort svg {
+        height: 1rem;
+        width: 1rem;
+    }
+    .mobile-board-actions {
+        align-items: center;
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+    .mobile-board-filter-button {
+        align-items: center;
+        background: rgba(255, 252, 246, 0.95);
+        border: 1px solid rgba(31, 26, 20, 0.12);
+        border-radius: 999px;
+        color: var(--text);
+        display: inline-flex;
+        gap: 0.45rem;
+        padding: 0.72rem 1rem;
+    }
+    .mobile-board-filter-button svg {
+        height: 1rem;
+        width: 1rem;
+    }
+    .board-filter-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        margin: 0 0 1.15rem;
+    }
+    .filter-chip {
+        align-items: center;
+        background: rgba(239, 230, 214, 0.9);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 999px;
+        color: var(--text);
+        display: inline-flex;
+        gap: 0.45rem;
+        padding: 0.5rem 0.8rem;
+        text-decoration: none;
+    }
+    .filter-chip-clear {
+        background: transparent;
+        color: var(--muted);
+    }
+    .filter-chip-x {
+        font-size: 0.85rem;
+        line-height: 1;
+    }
+    .listing-grid {
+        align-items: start;
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: 1fr;
+    }
+    .listing-card {
+        align-self: start;
+        border-radius: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.72rem;
+        position: relative;
+    }
+    .listing-card-header {
+        padding-right: 2.4rem;
+    }
+    .listing-card h2 {
+        font-size: 1.12rem;
+        line-height: 1.1;
+        margin: 0;
+    }
+    .listing-meta {
+        display: grid;
+        gap: 0.35rem;
+    }
+    .listing-meta p,
+    .listing-description,
+    .listing-empty {
+        margin: 0;
+    }
+    .listing-meta p {
+        color: var(--text);
+    }
+    .listing-stage {
+        color: #7b5a38;
+        font-weight: 700;
+    }
+    .listing-description,
+    .listing-empty {
+        color: var(--muted);
+        line-height: 1.55;
+    }
+    .listing-actions {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        margin-top: auto;
+    }
+    .listing-contact-button {
+        text-decoration: none;
+    }
+    .listing-contact-panel {
+        background: rgba(31, 26, 20, 0.04);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 16px;
+        display: grid;
+        gap: 0.35rem;
+        margin-top: 0.2rem;
+        padding: 0.8rem 0.9rem;
+    }
+    .listing-contact-panel[hidden] {
+        display: none;
+    }
+    .listing-contact-panel h3 {
+        font-size: 0.98rem;
+        margin: 0;
+    }
+    .listing-contact-panel p {
+        margin: 0;
+    }
+    .listing-save-form {
+        margin: 0;
+    }
+    .listing-save-button {
+        align-items: center;
+        background: rgba(31, 26, 20, 0.05);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        color: var(--text);
+        display: inline-flex;
+        font-size: 1rem;
+        height: 2.3rem;
+        justify-content: center;
+        padding: 0;
+        width: 2.3rem;
+    }
+    .listing-save-button.is-saved {
+        background: rgba(31, 26, 20, 0.12);
+    }
+    .filter-overlay,
+    .listing-overlay,
+    .account-overlay {
+        background: rgba(31, 26, 20, 0.32);
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+        position: fixed;
+        transition: opacity 160ms ease;
+        z-index: 40;
+    }
+    .filter-overlay.is-open,
+    .listing-overlay.is-open,
+    .account-overlay.is-open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .filter-overlay-backdrop,
+    .listing-overlay-backdrop,
+    .account-overlay-backdrop {
+        inset: 0;
+        position: absolute;
+    }
+    .filter-drawer,
+    .listing-sheet,
+    .account-sheet {
+        background: rgba(255, 252, 246, 0.98);
+        border-left: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 28px 0 0 28px;
+        bottom: 0;
+        box-shadow: -18px 0 40px rgba(31, 26, 20, 0.14);
+        max-width: 420px;
+        overflow-y: auto;
+        padding: 1.3rem 1.15rem 1.6rem;
+        position: absolute;
+        right: 0;
+        top: 0;
+        transform: translateX(100%);
+        transition: transform 180ms ease;
+        width: min(100vw, 420px);
+    }
+    .filter-overlay.is-open .filter-drawer,
+    .listing-overlay.is-open .listing-sheet,
+    .account-overlay.is-open .account-sheet {
+        transform: translateX(0);
+    }
+    .drawer-header {
+        align-items: flex-start;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .drawer-header h2,
+    .drawer-header h3 {
+        margin: 0;
+    }
+    .drawer-header p {
+        color: var(--muted);
+        margin: 0.35rem 0 0;
+    }
+    .drawer-close {
+        align-items: center;
+        background: rgba(31, 26, 20, 0.06);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        color: var(--text);
+        display: inline-flex;
+        height: 2.2rem;
+        justify-content: center;
+        padding: 0;
+        width: 2.2rem;
+    }
+    .listing-sheet {
+        border-left: 0;
+        border-radius: 28px 28px 0 0;
+        bottom: 0;
+        left: 0;
+        max-height: min(88vh, calc(100dvh - 0.75rem));
+        max-width: none;
+        overflow: hidden;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+        right: 0;
+        top: auto;
+        transform: translateY(100%);
+        width: auto;
+    }
+    .listing-overlay.is-open .listing-sheet {
+        transform: translateY(0);
+    }
+    .listing-sheet-body {
+        -webkit-overflow-scrolling: touch;
+        max-height: calc(min(88vh, calc(100dvh - 0.75rem)) - 5.75rem);
+        overflow-y: auto;
+        padding-right: 0.1rem;
+    }
+    .filter-panel-chip-shell {
+        margin-bottom: 1rem;
+    }
+    .filter-collection-section {
+        border-top: 1px solid rgba(31, 26, 20, 0.08);
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+    }
+    .filter-collection-section h3 {
+        font-size: 0.98rem;
+        margin: 0 0 0.75rem;
+    }
+    .saved-collection-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+    .saved-collection-link {
+        color: var(--text);
+        text-decoration: none;
+    }
+    .collection-save-trigger[disabled] {
+        background: rgba(31, 26, 20, 0.1);
+        color: rgba(31, 26, 20, 0.45);
+        cursor: default;
+    }
+    .desktop-panel-footer-copy {
+        color: var(--muted);
+        font-size: 0.78rem;
+    }
+    .account-summary {
+        align-items: center;
+        display: flex;
+        gap: 0.8rem;
+        margin-top: 1rem;
+    }
+    .account-avatar {
+        align-items: center;
+        background: rgba(31, 26, 20, 0.12);
+        border-radius: 999px;
+        display: inline-flex;
+        font-weight: 700;
+        height: 2.6rem;
+        justify-content: center;
+        width: 2.6rem;
+    }
+    .mobile-bottom-nav {
+        align-items: stretch;
+        background: rgba(255, 252, 246, 0.96);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        box-sizing: border-box;
+        border-radius: 24px;
+        bottom: 0.95rem;
+        box-shadow: 0 14px 32px rgba(31, 26, 20, 0.12);
+        display: flex;
+        justify-content: space-around;
+        left: 1rem;
+        padding: 0.35rem 0.5rem;
+        position: fixed;
+        right: 1rem;
+        z-index: 25;
+    }
+    .mobile-bottom-nav-item {
+        align-items: center;
+        appearance: none;
+        background: transparent;
+        border: 0;
+        box-sizing: border-box;
+        color: rgba(0, 0, 0, 0.65);
+        display: inline-flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        font-size: 0.7rem;
+        gap: 0.2rem;
+        justify-content: center;
+        min-height: 3.75rem;
+        min-width: 0;
+        padding: 0;
+        text-decoration: none;
+    }
+    .mobile-bottom-nav-item svg {
+        height: 1.15rem;
+        width: 1.15rem;
+    }
+    .mobile-bottom-nav-item.is-active {
+        color: var(--text);
+    }
+    .mobile-bottom-nav-item.is-post {
+        color: var(--accent);
+        transform: translateY(-0.28rem);
+    }
+    .mobile-bottom-nav-item.is-post .mobile-nav-icon-badge {
+        align-items: center;
+        background: var(--accent);
+        border-radius: 999px;
+        color: #fff;
+        display: inline-flex;
+        height: 2.35rem;
+        justify-content: center;
+        width: 2.35rem;
+    }
+    .mobile-bottom-nav-item.is-post svg {
+        height: 1.3rem;
+        width: 1.3rem;
+    }
+    @media (min-width: 768px) {
+        .mobile-bottom-nav,
+        .mobile-board-actions,
+        .mobile-account-entry {
+            display: none;
+        }
+        .feed-app-shell main {
+            padding: 2rem 2rem 4rem;
+        }
+        .board-shell {
+            margin: 0 auto;
+            max-width: 1180px;
+        }
+        .board-header {
+            margin-bottom: 1.35rem;
+        }
+        .board-header-top {
+            align-items: flex-end;
+            flex-direction: row;
+            justify-content: space-between;
+        }
+        .board-toolbar {
+            display: flex;
+        }
+        .listing-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .listing-card {
+            gap: 0.62rem;
+            padding: 1rem;
+        }
+        .listing-description {
+            font-size: 0.93rem;
+            line-height: 1.45;
+        }
+        .listing-sheet {
+            border-left: 1px solid rgba(31, 26, 20, 0.08);
+            border-radius: 28px 0 0 28px;
+            bottom: 0;
+            left: auto;
+            max-height: none;
+            max-width: 420px;
+            overflow-y: auto;
+            padding-bottom: 1.6rem;
+            right: 0;
+            top: 0;
+            transform: translateX(100%);
+            width: min(100vw, 420px);
+        }
+        .listing-overlay.is-open .listing-sheet {
+            transform: translateX(0);
+        }
+        .listing-sheet-body {
+            max-height: none;
+            overflow: visible;
+            padding-right: 0;
+        }
+    }
+    @media (min-width: 1120px) {
+        .listing-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+    .feed-app-shell.is-desktop-filter-open .filter-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .feed-app-shell.is-desktop-filter-open .filter-drawer {
+        transform: translateX(0);
+    }
+    @media (min-width: 768px) {
+        .feed-app-shell.is-desktop-filter-open main {
+            margin-right: 0;
+        }
+        .filter-overlay {
+            background: rgba(31, 26, 20, 0.14);
+            left: auto;
+            width: 100%;
+        }
+        .filter-drawer {
+            border-left: 1px solid rgba(31, 26, 20, 0.08);
+            border-radius: 28px 0 0 28px;
+            top: 74px;
+            width: min(100vw, 390px);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block app_header_brand_control %}
+<button
+    type="button"
+    class="desktop-shell-toggle"
+    id="desktop-shell-toggle"
+    aria-label="Toggle navigation panel"
+    aria-expanded="false"
+>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h16"></path>
+    </svg>
+</button>
+{% endblock %}
+
+{% block app_body_sidebar %}
+{% include "includes/desktop_app_shell.html" with desktop_shell_active="feed" %}
+{% endblock %}
+
+{% block content %}
+<div class="board-shell" id="feed-layout">
+    <section class="board-column">
+        <header class="board-header">
+            <div class="board-header-top">
+                <div class="board-copy">
+                    <p class="content-brand">Whisper</p>
+                    <h1>Current Opportunities</h1>
+                    <p>Private inventory, premarket movement, and curated local demand signals in one quiet board.</p>
+                </div>
+                <div class="board-toolbar">
+                    <div class="board-toolbar-group">
+                        <button type="button" class="toolbar-button open-filter-panel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 6h16"></path>
+                                <path d="M7 12h10"></path>
+                                <path d="M10 18h4"></path>
+                            </svg>
+                            <span>Filters</span>
+                        </button>
+                        <button type="button" class="toolbar-sort" aria-label="Sort opportunities">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M8 7h10"></path>
+                                <path d="M8 12h7"></path>
+                                <path d="M8 17h4"></path>
+                                <path d="M5 7v10"></path>
+                            </svg>
+                            <span>Newest</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="mobile-board-actions">
+                <button type="button" class="mobile-board-filter-button open-filter-panel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 6h16"></path>
+                        <path d="M7 12h10"></path>
+                        <path d="M10 18h4"></path>
+                    </svg>
+                    <span>Filters</span>
+                </button>
+            </div>
+        </header>
+
+        {% if active_filters %}
+            <div class="filter-chip-row board-filter-chip-row">
+                {% for active_filter in active_filters %}
+                    <a class="filter-chip" href="{{ active_filter.remove_url }}">
+                        <span>{{ active_filter.label }}</span>
+                        <span class="filter-chip-x" aria-hidden="true">&times;</span>
+                    </a>
+                {% endfor %}
+                <a class="filter-chip filter-chip-clear" href="{{ clear_filters_url }}">Clear All</a>
+            </div>
+        {% endif %}
+
+        <section class="listing-grid">
+            {% for listing in listings %}
+                {% with has_city=listing.city|default_if_none:'' has_title=listing.title|default_if_none:'' %}
+                    <article class="card listing-card">
+                        <form method="post" action="{% url 'toggle_saved_listing' listing.id %}" class="listing-save-form" style="position:absolute;top:1rem;right:1rem;">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button
+                                type="submit"
+                                class="listing-save-button save-listing-button{% if listing.id in saved_listing_ids %} is-saved{% endif %}"
+                                aria-label="{% if listing.id in saved_listing_ids %}Unsave listing{% else %}Save listing{% endif %}"
+                            >
+                                {% if listing.id in saved_listing_ids %}★{% else %}☆{% endif %}
+                            </button>
+                        </form>
+
+                        <div class="listing-card-header">
+                            <h2>
+                                {% if has_title %}
+                                    {{ listing.title }}
+                                {% elif has_city %}
+                                    {{ listing.city }} Opportunity
+                                {% else %}
+                                    Untitled Opportunity
+                                {% endif %}
+                            </h2>
+                        </div>
+
+                        <div class="listing-meta">
+                            {% if listing.beds or listing.baths %}
+                                <p>
+                                    {% if listing.beds %}{{ listing.beds }} Bed{% if listing.beds != 1 %}s{% endif %}{% endif %}
+                                    {% if listing.beds and listing.baths %} / {% endif %}
+                                    {% if listing.baths %}{{ listing.baths }} Bath{% if listing.baths != "1" and listing.baths != "1.0" %}s{% endif %}{% endif %}
+                                </p>
+                            {% endif %}
+                            {% if listing.price_min or listing.price_max %}
+                                <p>
+                                    {% if listing.price_min and listing.price_max %}
+                                        {{ listing.price_min|compact_price }} &ndash; {{ listing.price_max|compact_price }}
+                                    {% elif listing.price_min %}
+                                        {{ listing.price_min|compact_price }}+
+                                    {% else %}
+                                        Up to {{ listing.price_max|compact_price }}
+                                    {% endif %}
+                                </p>
+                            {% endif %}
+                            {% if listing.stage %}
+                                <p class="listing-stage">{{ listing.get_stage_display }}</p>
+                            {% endif %}
+                        </div>
+
+                        {% if listing.description %}
+                            <p class="listing-description">{{ listing.description|truncatechars:150 }}</p>
+                        {% endif %}
+
+                        <div class="listing-actions">
+                            <button
+                                type="button"
+                                class="listing-contact-button"
+                                data-listing-contact-target="listing-contact-{{ listing.id }}"
+                                aria-expanded="false"
+                            >
+                                Contact Agent
+                            </button>
+                        </div>
+                        <section class="listing-contact-panel" id="listing-contact-{{ listing.id }}" hidden aria-label="Contact details">
+                            <h3>{{ listing.agent.name }}</h3>
+                            {% if listing.agent.primary_phone %}
+                                <p><a href="tel:{{ listing.agent.primary_phone.phone_number }}">{{ listing.agent.primary_phone.phone_number }}</a></p>
+                            {% endif %}
+                            {% if listing.agent.contact_email %}
+                                <p class="muted"><a href="mailto:{{ listing.agent.contact_email }}">{{ listing.agent.contact_email }}</a></p>
+                            {% endif %}
+                        </section>
+                    </article>
+                {% endwith %}
+            {% empty %}
+                <article class="card listing-card">
+                    <div class="listing-card-header">
+                        <h2>No current opportunities</h2>
+                    </div>
+                    <p class="listing-empty">Adjust your filters or clear them to widen the board.</p>
+                </article>
+            {% endfor %}
+        </section>
+    </section>
+</div>
+{% endblock %}
+
+{% block app_body_overlay %}
+<div class="filter-overlay{% if show_filter_panel %} is-open{% endif %}" id="filter-overlay" aria-hidden="{% if show_filter_panel %}false{% else %}true{% endif %}">
+    <div class="filter-overlay-backdrop" data-close-overlay="filter-overlay"></div>
+    <aside class="filter-drawer" aria-label="Filters panel">
+        <div class="drawer-header">
+            <div>
+                <h2>Filters</h2>
+                <p>Refine the board without losing the overall view.</p>
+            </div>
+            <button type="button" class="drawer-close" data-close-overlay="filter-overlay" aria-label="Close filters">
+                &times;
+            </button>
+        </div>
+        {% if active_filters %}
+            <div class="filter-chip-row filter-panel-chip-shell">
+                {% for active_filter in active_filters %}
+                    <a class="filter-chip" href="{{ active_filter.remove_url }}">
+                        <span>{{ active_filter.label }}</span>
+                        <span class="filter-chip-x" aria-hidden="true">&times;</span>
+                    </a>
+                {% endfor %}
+                <a class="filter-chip filter-chip-clear" href="{{ clear_filters_url }}">Clear All</a>
+            </div>
+        {% endif %}
+        {% include "includes/filter_form.html" %}
+    </aside>
+</div>
+
+<div class="listing-overlay{% if show_listing_form %} is-open{% endif %}" id="listing-overlay" aria-hidden="{% if show_listing_form %}false{% else %}true{% endif %}">
+    <div class="listing-overlay-backdrop" data-close-overlay="listing-overlay"></div>
+    <section class="listing-sheet" aria-label="Post listing">
+        <div class="drawer-header">
+            <div>
+                <h2>Post Listing</h2>
+                <p>Share a quiet opportunity with the Whisper board.</p>
+            </div>
+            <button type="button" class="drawer-close" data-close-overlay="listing-overlay" aria-label="Close listing form">
+                &times;
+            </button>
+        </div>
+        <div class="listing-sheet-body">
+            {% include "includes/listing_form.html" with form_action=post_form_action submit_label="Submit Listing" %}
+        </div>
+    </section>
+</div>
+
+{% include "includes/account_overlay.html" %}
+
+<nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+    <a class="mobile-bottom-nav-item{% if home_active %} is-active{% endif %}" href="{% url 'feed' %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11.5 12 4l9 7.5"></path>
+            <path d="M5 10.5V20h14v-9.5"></path>
+        </svg>
+        <span>Home</span>
+    </a>
+    <button type="button" class="mobile-bottom-nav-item is-post open-listing-panel">
+        <span class="mobile-nav-icon-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 5v14"></path>
+                <path d="M5 12h14"></path>
+            </svg>
+        </span>
+        <span>Post</span>
+    </button>
+    <a class="mobile-bottom-nav-item{% if workspace_active %} is-active{% endif %}" href="{% url 'workspace' %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="7" height="7" rx="1.5"></rect>
+            <rect x="13" y="4" width="7" height="7" rx="1.5"></rect>
+            <rect x="4" y="13" width="7" height="7" rx="1.5"></rect>
+            <rect x="13" y="13" width="7" height="7" rx="1.5"></rect>
+        </svg>
+        <span>Workspace</span>
+    </a>
+</nav>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    (function () {
+        const appBody = document.querySelector(".feed-app-shell");
+        const desktopToggle = document.getElementById("desktop-shell-toggle");
+        const filterOverlay = document.getElementById("filter-overlay");
+        const listingOverlay = document.getElementById("listing-overlay");
+        const accountOverlay = document.getElementById("account-overlay");
+
+        function setDesktopRailState(isExpanded) {
+            if (!appBody || !desktopToggle) {
+                return;
+            }
+            appBody.classList.toggle("is-rail-expanded", isExpanded);
+            desktopToggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+        }
+
+        function setOverlayState(overlay, isOpen) {
+            if (!overlay) {
+                return;
+            }
+            overlay.classList.toggle("is-open", isOpen);
+            overlay.setAttribute("aria-hidden", isOpen ? "false" : "true");
+            if (overlay === filterOverlay && appBody && window.innerWidth >= 768) {
+                appBody.classList.toggle("is-desktop-filter-open", isOpen);
+            }
+        }
+
+        if (desktopToggle) {
+            desktopToggle.addEventListener("click", () => {
+                const willExpand = !appBody.classList.contains("is-rail-expanded");
+                setDesktopRailState(willExpand);
+            });
+        }
+
+        document.querySelectorAll(".open-filter-panel").forEach((button) => {
+            button.addEventListener("click", () => setOverlayState(filterOverlay, true));
+        });
+
+        document.querySelectorAll(".open-listing-panel").forEach((button) => {
+            button.addEventListener("click", () => setOverlayState(listingOverlay, true));
+        });
+
+        document.querySelectorAll(".open-account-panel").forEach((button) => {
+            button.addEventListener("click", () => setOverlayState(accountOverlay, true));
+        });
+
+        document.querySelectorAll("[data-close-overlay]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const overlayId = button.getAttribute("data-close-overlay");
+                setOverlayState(document.getElementById(overlayId), false);
+            });
+        });
+
+        document.querySelectorAll("[data-listing-contact-target]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const targetId = button.getAttribute("data-listing-contact-target");
+                const targetPanel = document.getElementById(targetId);
+                if (!targetPanel) {
+                    return;
+                }
+                const willOpen = targetPanel.hidden;
+                document.querySelectorAll(".listing-contact-panel").forEach((panel) => {
+                    panel.hidden = true;
+                });
+                document.querySelectorAll("[data-listing-contact-target]").forEach((trigger) => {
+                    trigger.setAttribute("aria-expanded", "false");
+                });
+                targetPanel.hidden = !willOpen;
+                button.setAttribute("aria-expanded", willOpen ? "true" : "false");
+            });
+        });
+
+        const filterForm = filterOverlay ? filterOverlay.querySelector(".filter-form") : null;
+        if (filterForm) {
+            filterForm.addEventListener("submit", () => setOverlayState(filterOverlay, false));
+        }
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") {
+                return;
+            }
+            setOverlayState(filterOverlay, false);
+            setOverlayState(listingOverlay, false);
+            setOverlayState(accountOverlay, false);
+            document.querySelectorAll(".listing-contact-panel").forEach((panel) => {
+                panel.hidden = true;
+            });
+            document.querySelectorAll("[data-listing-contact-target]").forEach((trigger) => {
+                trigger.setAttribute("aria-expanded", "false");
+            });
+        });
+
+        const collectionTrigger = document.querySelector("[data-collection-save-trigger]");
+        const collectionPanel = document.querySelector("[data-collection-save-panel]");
+        if (collectionTrigger && collectionPanel) {
+            collectionTrigger.addEventListener("click", () => {
+                const isHidden = collectionPanel.hasAttribute("hidden");
+                if (isHidden) {
+                    collectionPanel.removeAttribute("hidden");
+                    collectionPanel.classList.add("is-visible");
+                } else {
+                    collectionPanel.setAttribute("hidden", "");
+                    collectionPanel.classList.remove("is-visible");
+                }
+            });
+        }
+    })();
+</script>
+{% endblock %}

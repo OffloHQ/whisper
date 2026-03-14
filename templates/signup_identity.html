@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Signup | Whisper{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.access-gate-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.access-gate-card {
+    width: 100%;
+    max-width: 34rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo {
+    width: 92px;
+    height: auto;
+    display: block;
+    margin: 0 auto 1.25rem;
+}
+
+.access-card {
+    width: 100%;
+    text-align: left;
+}
+
+.access-step {
+    color: var(--muted);
+    font-size: 0.83rem;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.45rem;
+    text-transform: uppercase;
+}
+
+.access-card h1 {
+    font-size: 1.65rem;
+    line-height: 1.15;
+    margin: 0 0 0.5rem;
+    text-align: left;
+}
+
+.access-subtitle {
+    color: var(--muted);
+    margin: 0 0 1.15rem;
+}
+
+.access-gate-form {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.access-gate-form p {
+    margin: 0;
+}
+
+.access-gate-form input {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 12px;
+    border: 1px solid rgba(31,26,20,0.15);
+    background: white;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.access-gate-form input:focus {
+    outline: none;
+    border-color: #1f1a14;
+    box-shadow: 0 0 0 2px rgba(31,26,20,0.08);
+}
+
+.access-gate-form button,
+.button-link {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 999px;
+    border: none;
+    background: #1f1a14;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    justify-content: center;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+.access-gate-form button:hover,
+.button-link:hover {
+    opacity: 0.92;
+}
+
+.access-gate-form button:active,
+.button-link:active {
+    transform: translateY(1px);
+}
+
+.access-gate-errors {
+    margin: 0 0 1rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(120,53,15,0.08);
+    color: #7c2d12;
+    font-size: 0.92rem;
+}
+
+.access-readonly {
+    margin: 0 0 1rem;
+}
+
+.access-readonly input {
+    background: rgba(31,26,20,0.03);
+}
+
+.access-inline-note {
+    color: var(--muted);
+    margin: 1rem 0 0;
+}
+
+.card {
+    border-radius: 18px;
+    border: 1px solid rgba(31,26,20,0.08);
+    box-shadow: 0 10px 22px rgba(31,26,20,0.06);
+}
+
+@media (max-width: 640px) {
+    .access-gate-shell {
+        padding: 1.5rem 1rem;
+    }
+
+    .logo {
+        width: 84px;
+        margin-bottom: 1rem;
+    }
+
+    .access-card h1 {
+        font-size: 1.45rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="access-gate-shell">
+    <div class="access-gate-card">
+        <img src="{% static 'whisper/images/logo.svg' %}" alt="Whisper logo" class="logo">
+
+        <section class="card access-card">
+            <p class="access-step">Step 1 of 2</p>
+            <h1>Complete signup</h1>
+            <p class="access-subtitle">Confirm your identity details.</p>
+
+            {% if token_invalid %}
+                <p class="access-inline-note">This signup link is invalid or has expired. Request a new access link.</p>
+                <a href="{% url 'request_access' %}" class="button-link">Request Access</a>
+            {% else %}
+                <form method="post" class="access-gate-form">
+                    {% csrf_token %}
+
+                    {% if form.non_field_errors %}
+                    <div class="access-gate-errors">
+                        {{ form.non_field_errors }}
+                    </div>
+                    {% endif %}
+
+                    <p class="access-readonly">
+                        <label>Email</label>
+                        <input type="email" value="{{ signup_email }}" readonly>
+                    </p>
+
+                    {{ form.as_p }}
+
+                    <button type="submit">Verify License</button>
+                </form>
+
+                {% if manual_review %}
+                    <p class="access-inline-note">We’re having trouble verifying your license right now. A teammate will be in touch shortly.</p>
+                {% endif %}
+            {% endif %}
+        </section>
+    </div>
+</section>
+{% endblock %}
