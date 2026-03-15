@@ -506,7 +506,7 @@ class AccessFlowTests(TestCase):
 
 
 class FrontDoorMagicLinkTests(TestCase):
-    neutral_toast = "If this email is registered, a sign-in link has been sent. Otherwise, request access."
+    neutral_toast = "If this email is registered, a sign-in link has been sent. Please check your inbox and spam folder."
 
     @patch("listings.views.send_magic_sign_in_link")
     def test_landing_sends_magic_link_for_active_agent_email(self, mock_send_magic_sign_in_link):
@@ -532,19 +532,20 @@ class FrontDoorMagicLinkTests(TestCase):
             decision_status=AccessRequest.DecisionStatus.PENDING,
         )
 
-        response = self.client.post(reverse("landing"), {"email": "pending@example.com"})
+        response = self.client.post(reverse("landing"), {"email": "pending@example.com"}, follow=True)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertRedirects(response, reverse("landing") + "?email=pending%40example.com")
         self.assertContains(response, self.neutral_toast)
-        self.assertContains(response, "That email is still under review.")
+        self.assertContains(response, reverse("request_access") + "?email=pending%40example.com", html=False)
+        self.assertNotContains(response, "That email is still under review.")
 
     def test_landing_shows_unknown_email_message_and_prefilled_request_access_link(self):
-        response = self.client.post(reverse("landing"), {"email": "unknown@example.com"})
+        response = self.client.post(reverse("landing"), {"email": "unknown@example.com"}, follow=True)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertRedirects(response, reverse("landing") + "?email=unknown%40example.com")
         self.assertContains(response, self.neutral_toast)
-        self.assertContains(response, "We don’t recognize that email yet.")
-        self.assertContains(response, reverse("request_access") + "?email=unknown@example.com", html=False)
+        self.assertContains(response, reverse("request_access") + "?email=unknown%40example.com", html=False)
+        self.assertNotContains(response, "We don’t recognize that email yet.")
 
     def test_magic_link_sign_in_is_single_use_and_redirects_to_board(self):
         agent = create_agent(

@@ -63,7 +63,7 @@ DEV_SIGNUP_LINK_SESSION_KEY = "dev_access_request_signup_link"
 DEV_SIGNIN_LINK_SESSION_KEY = "dev_magic_sign_in_link"
 
 logger = logging.getLogger(__name__)
-FRONT_DOOR_NEUTRAL_TOAST = "If this email is registered, a sign-in link has been sent. Otherwise, request access."
+FRONT_DOOR_NEUTRAL_TOAST = "If this email is registered, a sign-in link has been sent. Please check your inbox and spam folder."
 DUPLICATE_SIGNUP_MESSAGE = "This email is already registered. Enter it on the sign-in page to get a magic link."
 
 def get_active_agent_queryset():
@@ -582,8 +582,10 @@ def feed(request):
 
 
 def landing(request):
+    request_access_email = request.GET.get("email", "").strip().lower()
     request_access_url = reverse("request_access")
-    status_notice = ""
+    if request_access_email:
+        request_access_url = f"{request_access_url}?{urlencode({'email': request_access_email})}"
     qr_panel = None
     if request.method == "POST":
         form = EmailEntryForm(request.POST)
@@ -608,7 +610,6 @@ def landing(request):
                         {
                             "form": form,
                             "request_access_url": request_access_url,
-                            "status_notice": status_notice,
                             "qr_panel": qr_panel,
                         },
                     )
@@ -629,19 +630,7 @@ def landing(request):
                 return redirect("landing")
 
             messages.info(request, FRONT_DOOR_NEUTRAL_TOAST)
-            if access_request is not None and access_request.decision_status != AccessRequest.DecisionStatus.REJECTED:
-                status_notice = "That email is still under review."
-            else:
-                status_notice = "We don’t recognize that email yet."
-            return render(
-                request,
-                "landing.html",
-                {
-                    "form": form,
-                    "request_access_url": f"{request_access_url}?email={email}",
-                    "status_notice": status_notice,
-                },
-            )
+            return redirect(f"{reverse('landing')}?{urlencode({'email': email})}")
     else:
         form = EmailEntryForm()
 
@@ -655,7 +644,6 @@ def landing(request):
             "form": form,
             "request_access_url": request_access_url,
             "dev_sign_in_link": dev_sign_in_link,
-            "status_notice": status_notice,
             "qr_panel": qr_panel,
         },
     )
