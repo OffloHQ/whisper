@@ -11,7 +11,7 @@ services:
     startCommand: gunicorn whisper.wsgi:application
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.9
+        value: 3.12.13
       - key: DEBUG
         value: "false"
       - key: SECRET_KEY
