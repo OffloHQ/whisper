@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications | Whisper{% endblock %}
+{% block app_body_class %}account-app-shell with-desktop-shell{% endblock %}
+
+{% block app_header_brand_control %}
+<button
+    type="button"
+    class="desktop-shell-toggle"
+    id="desktop-shell-toggle"
+    aria-label="Toggle navigation panel"
+    aria-expanded="false"
+>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M4 7h16"></path>
+        <path d="M4 12h16"></path>
+        <path d="M4 17h16"></path>
+    </svg>
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .notifications-shell {
+        display: grid;
+        gap: 1rem;
+        max-width: 980px;
+    }
+    .notifications-list {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .notification-card-link {
+        color: var(--text);
+        display: grid;
+        gap: 0.35rem;
+        text-decoration: none;
+    }
+    .notification-meta {
+        align-items: center;
+        display: flex;
+        gap: 0.6rem;
+        justify-content: space-between;
+    }
+    .notification-unread-dot {
+        background: var(--text);
+        border-radius: 999px;
+        display: inline-block;
+        height: 0.55rem;
+        width: 0.55rem;
+    }
+</style>
+{% endblock %}
+
+{% block app_body_sidebar %}
+{% include "includes/desktop_app_shell.html" with desktop_shell_active="notifications" %}
+{% endblock %}
+
+{% block content %}
+<section class="notifications-shell">
+    <header class="account-header">
+        <h1>Notifications</h1>
+        <p class="muted">Collection match alerts mirrored from the same emails Whisper sends.</p>
+    </header>
+    <section class="notifications-list">
+        {% for notification in notifications %}
+            <a href="{% url 'open_notification' notification.id %}" class="card notification-card-link">
+                <div class="notification-meta">
+                    <strong>{{ notification.title }}</strong>
+                    <span class="muted">{{ notification.created_at|date:"M j, Y g:i A" }}</span>
+                </div>
+                <p class="muted" style="margin:0;">{{ notification.body }}</p>
+                <div class="notification-meta">
+                    <span class="muted">
+                        {% if notification.collection %}{{ notification.collection.name }}{% endif %}
+                    </span>
+                    {% if not notification.is_read %}
+                        <span class="notification-unread-dot" aria-label="Unread"></span>
+                    {% endif %}
+                </div>
+            </a>
+        {% empty %}
+            <section class="card">
+                <h2 style="margin:0 0 0.35rem;">No notifications yet</h2>
+                <p class="muted" style="margin:0;">Collection match alerts will appear here after Whisper emails them to you.</p>
+            </section>
+        {% endfor %}
+    </section>
+</section>
+{% endblock %}

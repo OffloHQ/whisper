@@ -162,6 +162,12 @@
         color: var(--muted);
         font-size: 0.92rem;
     }
+    .workspace-alert-badge {
+        background: rgba(31, 26, 20, 0.08);
+        border-radius: 999px;
+        font-size: 0.78rem;
+        padding: 0.25rem 0.55rem;
+    }
     .workspace-listing-card {
         display: grid;
         gap: 0.45rem;
@@ -377,7 +383,12 @@
                         <a href="{{ collection.detail_url }}" class="card workspace-collection-card">
                             <div class="workspace-collection-meta">
                                 <h2>{{ collection.name }}</h2>
-                                <span class="workspace-count">{{ collection.listing_count }} items</span>
+                                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end;">
+                                    {% if collection.notifications_enabled %}
+                                        <span class="workspace-alert-badge">Alert On</span>
+                                    {% endif %}
+                                    <span class="workspace-count">{{ collection.listing_count }} items</span>
+                                </div>
                             </div>
                             <p class="muted">{{ collection.summary }}</p>
                         </a>

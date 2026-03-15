@@ -88,6 +88,48 @@ class CollectionForm(forms.Form):
     name = forms.CharField(max_length=255, label="Collection name")
 
 
+class CollectionAlertSaveForm(FeedFilterForm):
+    collection_choice = forms.ChoiceField(required=False, choices=(), label="Collection", widget=forms.RadioSelect)
+    new_collection_name = forms.CharField(required=False, max_length=255, label="New collection")
+    notifications_enabled = forms.BooleanField(required=False, initial=False, label="Enable collection alert")
+
+    def __init__(self, *args, **kwargs):
+        agent = kwargs.pop("agent", None)
+        super().__init__(*args, **kwargs)
+        choices = []
+        if agent is not None:
+            choices.extend(
+                (str(collection.id), collection.name)
+                for collection in Collection.objects.filter(agent=agent).order_by("name", "-created_at")
+            )
+        choices.append(("__new__", "+ New Collection"))
+        self.fields["collection_choice"].choices = choices
+
+    def clean(self):
+        cleaned_data = super().clean()
+        collection_choice = cleaned_data.get("collection_choice")
+        new_collection_name = cleaned_data.get("new_collection_name", "").strip()
+
+        if not collection_choice:
+            raise forms.ValidationError("Choose an existing collection or create a new one.")
+        if collection_choice == "__new__" and not new_collection_name:
+            raise forms.ValidationError("Enter a name for the new collection.")
+
+        cleaned_data["new_collection_name"] = new_collection_name
+        return cleaned_data
+
+
+class CollectionAlertSettingsForm(FeedFilterForm):
+    name = forms.CharField(max_length=255, label="Collection name")
+    notifications_enabled = forms.BooleanField(required=False, label="Email me when a new post matches")
+
+
+class NotificationPreferencesForm(forms.Form):
+    freshness_reminder_emails = forms.BooleanField(required=False, label="Freshness reminder emails")
+    collection_match_emails = forms.BooleanField(required=False, label="Collection match emails")
+    product_update_emails = forms.BooleanField(required=False, label="Product update emails")
+
+
 class AssignSavedListingForm(forms.Form):
     collection_choice = forms.ChoiceField(required=False, choices=(), label="Collection", widget=forms.RadioSelect)
     new_collection_name = forms.CharField(required=False, max_length=255, label="New collection")

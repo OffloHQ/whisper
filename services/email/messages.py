@@ -95,3 +95,36 @@ def build_magic_sign_in_email(*, sign_in_url):
         },
     )
     return subject, html_body, text_body
+
+
+def build_collection_match_alert_email(*, agent_name, listing, collection_names):
+    product_name = getattr(settings, "PRODUCT_NAME", "Whisper")
+    if len(collection_names) == 1:
+        subject = f"{product_name} — New Board Posting matches {collection_names[0]}"
+    else:
+        subject = f"{product_name} — New Board Posting matches {len(collection_names)} collection alerts"
+    html_body, text_body = render_email(
+        html_template="emails/collections/match_alert.html",
+        text_template="emails/collections/match_alert.txt",
+        context={
+            "agent_name": agent_name,
+            "listing": listing,
+            "collection_names": collection_names,
+            "site_base_url": settings.SITE_BASE_URL,
+        },
+    )
+    return subject, html_body, text_body
+
+
+def build_product_update_email(*, subject_line, heading, body_copy, cta_url=""):
+    product_name = getattr(settings, "PRODUCT_NAME", "Whisper")
+    subject = f"{product_name} — {subject_line}"
+    html_body = (
+        f"<p><strong>{heading}</strong></p>"
+        f"<p>{body_copy}</p>"
+        + (f'<p><a href="{cta_url}">Open Whisper</a></p>' if cta_url else "")
+    )
+    text_body = f"{heading}\n\n{body_copy}"
+    if cta_url:
+        text_body += f"\n\nOpen Whisper:\n{cta_url}"
+    return subject, html_body, text_body

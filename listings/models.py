@@ -24,6 +24,9 @@ class AgentUser(models.Model):
     city = models.CharField(max_length=120, blank=True)
     is_verified = models.BooleanField(default=False)
     show_email_to_agents = models.BooleanField(default=False)
+    freshness_reminder_emails = models.BooleanField(default=True)
+    collection_match_emails = models.BooleanField(default=True)
+    product_update_emails = models.BooleanField(default=False)
     signup_status = models.CharField(
         max_length=32,
         choices=SignupStatus.choices,
@@ -368,6 +371,7 @@ class Collection(models.Model):
         related_name="collections",
     )
     name = models.CharField(max_length=255)
+    notifications_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -499,3 +503,86 @@ class AgentPhone(models.Model):
 
     def __str__(self) -> str:
         return self.phone_number
+
+
+class EmailNotificationLog(models.Model):
+    class NotificationType(models.TextChoices):
+        COLLECTION_MATCH = "collection_match", "Collection Match"
+
+    agent = models.ForeignKey(
+        AgentUser,
+        on_delete=models.CASCADE,
+        related_name="email_notification_logs",
+    )
+    collection = models.ForeignKey(
+        Collection,
+        on_delete=models.CASCADE,
+        related_name="email_notification_logs",
+        null=True,
+        blank=True,
+    )
+    listing = models.ForeignKey(
+        Listing,
+        on_delete=models.CASCADE,
+        related_name="email_notification_logs",
+        null=True,
+        blank=True,
+    )
+    recipient_email = models.EmailField()
+    notification_type = models.CharField(max_length=32, choices=NotificationType.choices)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-sent_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["collection", "listing", "notification_type"],
+                name="unique_collection_listing_notification",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.notification_type} to {self.recipient_email}"
+
+
+class InAppNotification(models.Model):
+    class NotificationType(models.TextChoices):
+        COLLECTION_MATCH = "collection_match", "Collection Match"
+
+    agent = models.ForeignKey(
+        AgentUser,
+        on_delete=models.CASCADE,
+        related_name="in_app_notifications",
+    )
+    notification_type = models.CharField(max_length=32, choices=NotificationType.choices)
+    title = models.CharField(max_length=255)
+    body = models.TextField(blank=True)
+    collection = models.ForeignKey(
+        Collection,
+        on_delete=models.CASCADE,
+        related_name="in_app_notifications",
+        null=True,
+        blank=True,
+    )
+    listing = models.ForeignKey(
+        Listing,
+        on_delete=models.CASCADE,
+        related_name="in_app_notifications",
+        null=True,
+        blank=True,
+    )
+    link_url = models.CharField(max_length=500, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent", "collection", "listing", "notification_type"],
+                name="unique_in_app_collection_notification",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.title

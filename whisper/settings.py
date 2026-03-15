@@ -13,6 +13,17 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
+
+try:
+    import dj_database_url
+except ImportError:  # pragma: no cover - local fallback until deployment deps are installed
+    dj_database_url = None
+
+try:
+    import whitenoise  # noqa: F401
+except ImportError:  # pragma: no cover - local fallback until deployment deps are installed
+    whitenoise = None
 
 load_dotenv()
 
@@ -35,9 +46,14 @@ SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-whisper-dev-key")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool("DEBUG", False)
+if not DEBUG and SECRET_KEY == "django-insecure-whisper-dev-key":
+    raise ImproperlyConfigured("SECRET_KEY must be set when DEBUG is false.")
 
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
 DEV_EXPOSE_SIGNUP_LINKS = env_bool("DEV_EXPOSE_SIGNUP_LINKS", False)
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 # Application definition
@@ -54,6 +70,12 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+]
+
+if whitenoise is not None:
+    MIDDLEWARE.append('whitenoise.middleware.WhiteNoiseMiddleware')
+
+MIDDLEWARE += [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -86,12 +108,24 @@ WSGI_APPLICATION = 'whisper.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL:
+    if dj_database_url is None:
+        raise ImproperlyConfigured("dj-database-url must be installed to use DATABASE_URL.")
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=not DEBUG,
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -132,10 +166,21 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+
+if whitenoise is not None:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -147,12 +192,20 @@ EMAIL_PROVIDER = os.getenv('EMAIL_PROVIDER')
 DEFAULT_FROM_EMAIL = os.getenv('EMAILIT_FROM', 'hello@whispered.homes')
 EMAILIT_API_URL = os.getenv('EMAILIT_API_URL', 'https://api.emailit.com/v2/emails')
 EMAILIT_API_KEY = os.getenv('EMAILIT_API_KEY', '')
-SITE_BASE_URL = os.getenv('SITE_BASE_URL', 'http://localhost:8000')
+SITE_BASE_URL = os.getenv('SITE_BASE_URL') or (
+    f'https://{RENDER_EXTERNAL_HOSTNAME}' if RENDER_EXTERNAL_HOSTNAME else 'http://localhost:8000'
+)
 LISTING_CHECKIN_LINK_MAX_AGE = 60 * 60 * 24 * 90
 ACCOUNT_EMAIL_VERIFICATION_LINK_MAX_AGE = 60 * 60 * 24 * 7
 ACCESS_REQUEST_SIGNUP_LINK_MAX_AGE = 60 * 60 * 24 * 7
 AUTH_ACCESS_TOKEN_MAX_AGE = int(os.getenv("AUTH_ACCESS_TOKEN_MAX_AGE", str(60 * 30)))
 QR_AUTH_ACCESS_TOKEN_MAX_AGE = int(os.getenv("QR_AUTH_ACCESS_TOKEN_MAX_AGE", str(60 * 10)))
+AUTH_TOKEN_RETENTION_DAYS = int(os.getenv("AUTH_TOKEN_RETENTION_DAYS", "14"))
+QR_AUTH_TOKEN_EXPIRED_RETENTION_DAYS = int(os.getenv("QR_AUTH_TOKEN_EXPIRED_RETENTION_DAYS", "1"))
+QR_AUTH_TOKEN_USED_RETENTION_DAYS = int(os.getenv("QR_AUTH_TOKEN_USED_RETENTION_DAYS", "7"))
+ACCESS_REQUEST_RETENTION_DAYS = int(os.getenv("ACCESS_REQUEST_RETENTION_DAYS", "90"))
+REJECTED_ACCESS_REQUEST_RETENTION_DAYS = int(os.getenv("REJECTED_ACCESS_REQUEST_RETENTION_DAYS", "90"))
+COLLECTION_ALERT_FALLBACK_LOOKBACK_DAYS = int(os.getenv("COLLECTION_ALERT_FALLBACK_LOOKBACK_DAYS", "7"))
 LISTING_FRESHNESS_OPTIONAL_UPDATE_DAYS = 14
 LISTING_FRESHNESS_REQUIRED_UPDATE_DAYS = 21
 LISTING_FRESHNESS_REQUIRED_UPDATE_GRACE_DAYS = 3

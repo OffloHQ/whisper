@@ -57,6 +57,47 @@
     .notification-label {
         color: var(--muted);
     }
+    .notification-preferences-form {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .notification-group {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .notification-group-title {
+        font-size: 0.86rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        margin: 0;
+        text-transform: uppercase;
+    }
+    .notification-toggle {
+        align-items: center;
+        display: flex;
+        gap: 0.7rem;
+    }
+    .notification-toggle input {
+        width: auto;
+    }
+    .notification-toggle-copy {
+        display: grid;
+        gap: 0.2rem;
+    }
+    .notification-helper {
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.45;
+        margin: 0;
+    }
+    .notification-static-card {
+        background: rgba(31, 26, 20, 0.03);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 16px;
+        display: grid;
+        gap: 0.35rem;
+        padding: 0.95rem 1rem;
+    }
     .activity-list {
         display: grid;
         gap: 0.7rem;
@@ -260,14 +301,43 @@
 
     <section class="card account-card">
         <h2>Notifications</h2>
-        <div class="account-grid">
-            {% for preference in notification_preferences %}
-                <div class="notification-row">
-                    <span class="notification-label">{{ preference.label }}</span>
-                    <span class="status-pill">{{ preference.value }}</span>
+        <form method="post" action="{% url 'update_notification_preferences' %}" class="notification-preferences-form">
+            {% csrf_token %}
+            <div class="notification-group">
+                <p class="notification-group-title">Optional Emails</p>
+                <label class="notification-toggle">
+                    {{ notification_preferences_form.freshness_reminder_emails }}
+                    <span class="notification-toggle-copy">
+                        <span>Freshness reminder emails</span>
+                        <span class="notification-helper">Stay on top of listings that need a soft or required update to remain live on the board.</span>
+                    </span>
+                </label>
+                <label class="notification-toggle">
+                    {{ notification_preferences_form.collection_match_emails }}
+                    <span class="notification-toggle-copy">
+                        <span>Collection match emails</span>
+                        <span class="notification-helper">Get an email when a new board post matches a saved collection alert.</span>
+                    </span>
+                </label>
+                <label class="notification-toggle">
+                    {{ notification_preferences_form.product_update_emails }}
+                    <span class="notification-toggle-copy">
+                        <span>Product update emails</span>
+                        <span class="notification-helper">Occasional emails when Whisper launches in new areas or rolls out major features.</span>
+                    </span>
+                </label>
+            </div>
+            <div class="notification-group">
+                <p class="notification-group-title">Always On</p>
+                <div class="notification-static-card">
+                    <strong>Account &amp; security emails</strong>
+                    <p class="notification-helper">Sign-in links, account verification, and access-status emails stay on so your account remains secure and usable.</p>
                 </div>
-            {% endfor %}
-        </div>
+            </div>
+            <div>
+                <button type="submit" class="contact-link-button">Save Notification Preferences</button>
+            </div>
+        </form>
     </section>
 
     <section class="card account-card" id="contact-settings">

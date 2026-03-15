@@ -131,6 +131,50 @@
         font-size: 0.85rem;
         line-height: 1;
     }
+    .collection-alert-card {
+        display: grid;
+        gap: 0.85rem;
+        margin: 0 0 1rem;
+    }
+    .collection-alert-card h2,
+    .collection-alert-card p {
+        margin: 0;
+    }
+    .collection-alert-form {
+        display: grid;
+        gap: 0.8rem;
+    }
+    .collection-alert-options {
+        display: grid;
+        gap: 0.55rem;
+    }
+    .collection-alert-option {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 14px;
+        display: flex;
+        gap: 0.65rem;
+        padding: 0.75rem 0.85rem;
+    }
+    .collection-alert-option input {
+        width: auto;
+    }
+    .collection-alert-checkbox-row {
+        align-items: center;
+        display: flex;
+        gap: 0.65rem;
+    }
+    .collection-alert-checkbox-row input {
+        width: auto;
+    }
+    .collection-alert-builder[hidden] {
+        display: none;
+    }
+    .collection-alert-inline-note {
+        color: var(--muted);
+        font-size: 0.92rem;
+    }
     .listing-grid {
         align-items: start;
         display: grid;
@@ -585,6 +629,40 @@
             </div>
         {% endif %}
 
+        {% if active_filters and not has_filtered_empty_state %}
+            <section class="card collection-alert-card">
+                <div>
+                    <h2>Save this intent</h2>
+                    <p class="muted">Save these filters to an existing collection or create a new named alert.</p>
+                </div>
+                <form method="post" action="{% url 'save_collection' %}" class="collection-alert-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="city" value="{{ request.GET.city }}">
+                    <input type="hidden" name="stage" value="{{ request.GET.stage }}">
+                    <input type="hidden" name="min_beds" value="{{ request.GET.min_beds }}">
+                    <input type="hidden" name="min_baths" value="{{ request.GET.min_baths }}">
+                    <input type="hidden" name="min_price" value="{{ request.GET.min_price }}">
+                    <input type="hidden" name="max_price" value="{{ request.GET.max_price }}">
+                    <div class="collection-alert-options">
+                        {% for radio in collection_form.collection_choice %}
+                            <label class="collection-alert-option">
+                                {{ radio.tag }}
+                                <span>{{ radio.choice_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <div>
+                        {{ collection_form.new_collection_name }}
+                    </div>
+                    <label class="collection-alert-checkbox-row">
+                        {{ collection_form.notifications_enabled }}
+                        <span>Notify me when a new post matches this filter</span>
+                    </label>
+                    <button type="submit">Save to Collection</button>
+                </form>
+            </section>
+        {% endif %}
+
         <section class="listing-grid">
             {% for listing in listings %}
                 {% with has_city=listing.city|default_if_none:'' has_title=listing.title|default_if_none:'' %}
@@ -668,6 +746,35 @@
                         <h2>No current opportunities</h2>
                     </div>
                     <p class="listing-empty">Adjust your filters or clear them to widen the board.</p>
+                    {% if active_filters %}
+                        <label class="collection-alert-checkbox-row" style="margin-top:0.4rem;">
+                            <input type="checkbox" id="empty-state-alert-toggle">
+                            <span>Notify me when a new post matches this filter</span>
+                        </label>
+                        <p class="collection-alert-inline-note">We’ll save this as a collection alert.</p>
+                        <form method="post" action="{% url 'save_collection' %}" class="collection-alert-form collection-alert-builder" id="empty-state-alert-builder" hidden>
+                            {% csrf_token %}
+                            <input type="hidden" name="city" value="{{ request.GET.city }}">
+                            <input type="hidden" name="stage" value="{{ request.GET.stage }}">
+                            <input type="hidden" name="min_beds" value="{{ request.GET.min_beds }}">
+                            <input type="hidden" name="min_baths" value="{{ request.GET.min_baths }}">
+                            <input type="hidden" name="min_price" value="{{ request.GET.min_price }}">
+                            <input type="hidden" name="max_price" value="{{ request.GET.max_price }}">
+                            <input type="hidden" name="notifications_enabled" value="on">
+                            <div class="collection-alert-options">
+                                {% for radio in collection_form.collection_choice %}
+                                    <label class="collection-alert-option">
+                                        {{ radio.tag }}
+                                        <span>{{ radio.choice_label }}</span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                            <div>
+                                {{ collection_form.new_collection_name }}
+                            </div>
+                            <button type="submit">Save Collection Alert</button>
+                        </form>
+                    {% endif %}
                 </article>
             {% endfor %}
         </section>
@@ -857,6 +964,14 @@
                     collectionPanel.setAttribute("hidden", "");
                     collectionPanel.classList.remove("is-visible");
                 }
+            });
+        }
+
+        const emptyStateAlertToggle = document.getElementById("empty-state-alert-toggle");
+        const emptyStateAlertBuilder = document.getElementById("empty-state-alert-builder");
+        if (emptyStateAlertToggle && emptyStateAlertBuilder) {
+            emptyStateAlertToggle.addEventListener("change", () => {
+                emptyStateAlertBuilder.hidden = !emptyStateAlertToggle.checked;
             });
         }
     })();

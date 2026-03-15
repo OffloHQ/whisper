@@ -54,7 +54,7 @@ def send_magic_sign_in_link(request, *, agent, email):
     return auth_access_token, sign_in_url
 
 
-def create_qr_sign_in_token(*, agent, email):
+def create_qr_sign_in_token(request, *, agent, email):
     auth_access_token = create_auth_access_token(
         agent=agent,
         email=email,
@@ -62,7 +62,7 @@ def create_qr_sign_in_token(*, agent, email):
         delivery_method=AuthAccessToken.DeliveryMethod.QR,
         max_age_seconds=getattr(settings, "QR_AUTH_ACCESS_TOKEN_MAX_AGE", 60 * 10),
     )
-    return auth_access_token, build_auth_access_url(request=None, auth_access_token=auth_access_token)
+    return auth_access_token, build_auth_access_url(request, auth_access_token=auth_access_token)
 
 
 def get_valid_auth_access_token(token_value, *, scope=AuthAccessToken.Scope.SIGN_IN):

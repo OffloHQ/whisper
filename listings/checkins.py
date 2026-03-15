@@ -194,6 +194,8 @@ def send_grouped_listing_checkins(now=None, *, deactivate_stale_on_run=True):
 
     for listings in grouped.values():
         agent = listings[0].agent
+        if not agent.freshness_reminder_emails:
+            continue
         subject, html_body, text_body = build_grouped_checkin_email(agent, listings, now=now)
         send_email(
             to_email=agent.email,

@@ -2,13 +2,23 @@ from django.contrib import admin
 from django.contrib import messages
 
 from .intake import approve_access_request, reject_access_request
-from .models import AccessRequest, AgentUser, Collection, CollectionFilter, CollectionItem, Listing, SavedListing
+from .models import AccessRequest, AgentUser, Collection, CollectionFilter, CollectionItem, EmailNotificationLog, InAppNotification, Listing, SavedListing
 
 
 @admin.register(AgentUser)
 class AgentUserAdmin(admin.ModelAdmin):
-    list_display = ("name", "email", "state", "license_number", "signup_status", "is_verified", "created_at")
-    list_filter = ("signup_status", "is_verified", "state", "created_at")
+    list_display = (
+        "name",
+        "email",
+        "state",
+        "license_number",
+        "signup_status",
+        "is_verified",
+        "freshness_reminder_emails",
+        "collection_match_emails",
+        "created_at",
+    )
+    list_filter = ("signup_status", "is_verified", "state", "freshness_reminder_emails", "collection_match_emails", "created_at")
     search_fields = ("name", "email", "license_number", "state")
 
 
@@ -145,8 +155,8 @@ class CollectionItemInline(admin.TabularInline):
 
 @admin.register(Collection)
 class CollectionAdmin(admin.ModelAdmin):
-    list_display = ("name", "agent", "created_at")
-    list_filter = ("created_at", "agent")
+    list_display = ("name", "agent", "notifications_enabled", "created_at")
+    list_filter = ("created_at", "agent", "notifications_enabled")
     search_fields = ("name", "agent__name", "agent__email")
     inlines = [CollectionFilterInline, CollectionItemInline]
 
@@ -163,3 +173,17 @@ class CollectionItemAdmin(admin.ModelAdmin):
     list_display = ("collection", "listing", "created_at")
     list_filter = ("created_at", "collection")
     search_fields = ("collection__name", "listing__title", "listing__city")
+
+
+@admin.register(EmailNotificationLog)
+class EmailNotificationLogAdmin(admin.ModelAdmin):
+    list_display = ("notification_type", "recipient_email", "agent", "collection", "listing", "sent_at")
+    list_filter = ("notification_type", "sent_at")
+    search_fields = ("recipient_email", "agent__email", "collection__name", "listing__title")
+
+
+@admin.register(InAppNotification)
+class InAppNotificationAdmin(admin.ModelAdmin):
+    list_display = ("notification_type", "agent", "collection", "listing", "is_read", "created_at")
+    list_filter = ("notification_type", "is_read", "created_at")
+    search_fields = ("agent__email", "collection__name", "listing__title", "title", "body")

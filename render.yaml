@@ -1,0 +1,22 @@
+databases:
+  - name: whisper-db
+    plan: free
+
+services:
+  - type: web
+    name: whisper-web
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --no-input
+    startCommand: gunicorn whisper.wsgi:application
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: whisper-db
+          property: connectionString

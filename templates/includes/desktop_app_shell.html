@@ -17,6 +17,13 @@
                 </svg>
                 <span class="desktop-panel-link-label">Workspace</span>
             </a>
+            <a class="desktop-panel-link{% if desktop_shell_active == 'notifications' %} is-active{% endif %}" href="{% url 'notifications' %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9a6 6 0 1 1 12 0v4l1.5 2.5h-15L6 13V9"></path>
+                    <path d="M10 18a2 2 0 0 0 4 0"></path>
+                </svg>
+                <span class="desktop-panel-link-label">Alerts{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</span>
+            </a>
         </div>
         <div class="desktop-panel-lower">
             <a href="{% url 'account' %}" class="desktop-panel-link{% if desktop_shell_active == 'account' %} is-active{% endif %}">

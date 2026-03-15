@@ -18,6 +18,7 @@ from .auth_links import (
     send_magic_sign_in_link,
 )
 from .checkins import load_signed_listing_token
+from .collection_alerts import send_collection_match_alerts_for_listing
 from .email_flows import (
     build_access_request_signup_token,
     load_access_request_continuation_token,
@@ -32,10 +33,13 @@ from .forms import (
     AgentEmailForm,
     AgentPhoneForm,
     AssignSavedListingForm,
+    CollectionAlertSaveForm,
+    CollectionAlertSettingsForm,
     CollectionForm,
     EmailEntryForm,
     FeedFilterForm,
     ListingForm,
+    NotificationPreferencesForm,
     RequestAccessForm,
     SignupContactForm,
     SignupIdentityForm,
@@ -46,7 +50,7 @@ from .intake import (
     apply_failed_verification_routing,
     waitlist_access_request,
 )
-from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, Listing, SavedListing
+from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, InAppNotification, Listing, SavedListing
 from .utils import format_listing_price
 from .verification import VerificationService, VerificationStatus
 from .verification.utils import normalize_license_number
@@ -64,6 +68,12 @@ DUPLICATE_SIGNUP_MESSAGE = "This email is already registered. Enter it on the si
 
 def get_active_agent_queryset():
     return AgentUser.objects.filter(is_active=True, deleted_at__isnull=True).order_by("pk")
+
+
+def get_unread_notification_count(agent):
+    if agent is None:
+        return 0
+    return InAppNotification.objects.filter(agent=agent, is_read=False).count()
 
 
 def set_current_agent(request, agent):
@@ -292,6 +302,7 @@ def build_saved_collections(request, agent):
         {
             "name": collection.name,
             "url": build_collection_url(request, collection),
+            "notifications_enabled": collection.notifications_enabled and hasattr(collection, "saved_filter"),
         }
         for collection in collections
     ]
@@ -367,6 +378,7 @@ def build_workspace_context(request, *, section="collections"):
                 "summary": build_collection_summary(collection),
                 "listing_count": collection.items.count(),
                 "detail_url": reverse("workspace_collection_detail", args=[collection.id]),
+                "notifications_enabled": collection.notifications_enabled and hasattr(collection, "saved_filter"),
             }
             for collection in collection_qs
         ]
@@ -398,6 +410,7 @@ def build_workspace_context(request, *, section="collections"):
         "current_agent": current_agent,
         "current_agent_initials": get_agent_initials(current_agent),
         "current_agent_membership": get_agent_membership_level(current_agent),
+        "unread_notification_count": get_unread_notification_count(current_agent),
         "my_posts": my_posts,
         "saved_listing_cards": saved_listing_cards,
         "saved_listings": saved_listings,
@@ -417,6 +430,7 @@ def build_account_context(request, *, deletion_form=None):
         "current_agent": current_agent,
         "current_agent_initials": get_agent_initials(current_agent),
         "current_agent_membership": get_agent_membership_level(current_agent),
+        "unread_notification_count": get_unread_notification_count(current_agent),
         "account_membership_status": get_agent_membership_status(current_agent),
         "account_license_status": get_agent_license_status(current_agent),
         "masked_license_number": mask_license_number(current_agent.license_number),
@@ -431,11 +445,13 @@ def build_account_context(request, *, deletion_form=None):
             {"label": "Saved Opportunities", "value": saved_count, "url": f'{reverse("workspace")}?section=saved'},
             {"label": "Collections", "value": collections_count, "url": f'{reverse("workspace")}?section=collections'},
         ],
-        "notification_preferences": [
-            {"label": "Freshness reminder emails", "value": "On"},
-            {"label": "Contact and activity emails", "value": "Planned"},
-            {"label": "Product update emails", "value": "Optional"},
-        ],
+        "notification_preferences_form": NotificationPreferencesForm(
+            initial={
+                "freshness_reminder_emails": current_agent.freshness_reminder_emails,
+                "collection_match_emails": current_agent.collection_match_emails,
+                "product_update_emails": current_agent.product_update_emails,
+            }
+        ),
         "deletion_form": deletion_form or AccountDeletionForm(),
     }
 
@@ -488,10 +504,10 @@ def get_feed_context(
         .prefetch_related("agent__phones", "agent__emails")
         .order_by("-created_at")
     )
+    current_agent = get_current_agent(request)
     filter_form = filter_form or FeedFilterForm(request.GET or None)
     active_filters = []
-    collection_form = collection_form or CollectionForm()
-    current_agent = get_current_agent(request)
+    collection_form = collection_form or CollectionAlertSaveForm(agent=current_agent, initial={"notifications_enabled": False})
     saved_listing_ids = set()
     saved_listing_count = 0
     mine_only = request.GET.get("mine") == "on"
@@ -535,6 +551,7 @@ def get_feed_context(
         "current_agent": current_agent,
         "current_agent_initials": get_agent_initials(current_agent),
         "current_agent_membership": get_agent_membership_level(current_agent),
+        "unread_notification_count": get_unread_notification_count(current_agent),
         "filter_form": filter_form,
         "form": form or ListingForm(),
         "listings": listings,
@@ -546,6 +563,7 @@ def get_feed_context(
         "saved_listing_ids": saved_listing_ids,
         "show_filter_panel": show_filter_panel,
         "show_listing_form": show_listing_form,
+        "has_filtered_empty_state": bool(active_filters) and not listings.exists(),
         "toggle_save_listing_action": "/listings/save-toggle/",
         "draft_listings": [],
         "workspace_active": mine_only or saved_view,
@@ -578,7 +596,7 @@ def landing(request):
 
             if active_agent is not None:
                 if sign_in_method == "qr":
-                    qr_token, qr_sign_in_url = create_qr_sign_in_token(agent=active_agent, email=email)
+                    qr_token, qr_sign_in_url = create_qr_sign_in_token(request, agent=active_agent, email=email)
                     qr_panel = {
                         "image_url": build_qr_image_url(qr_sign_in_url),
                         "expires_at": qr_token.expires_at,
@@ -1054,6 +1072,44 @@ def account(request):
     return render(request, "account.html", context)
 
 
+@never_cache
+def notifications(request):
+    current_agent = get_session_agent(request)
+    if current_agent is None:
+        messages.error(request, "Log in to access notifications.")
+        return redirect("landing")
+
+    notifications_qs = InAppNotification.objects.filter(agent=current_agent).select_related("collection", "listing")
+    return render(
+        request,
+        "notifications.html",
+        {
+            "notifications": notifications_qs,
+            "current_agent": current_agent,
+            "current_agent_initials": get_agent_initials(current_agent),
+            "current_agent_membership": get_agent_membership_level(current_agent),
+            "unread_notification_count": get_unread_notification_count(current_agent),
+        },
+    )
+
+
+@never_cache
+def open_notification(request, notification_id):
+    current_agent = get_session_agent(request)
+    if current_agent is None:
+        messages.error(request, "Log in to access notifications.")
+        return redirect("landing")
+
+    notification = get_object_or_404(
+        InAppNotification.objects.filter(agent=current_agent),
+        pk=notification_id,
+    )
+    if not notification.is_read:
+        notification.is_read = True
+        notification.save(update_fields=["is_read"])
+    return redirect(notification.link_url or reverse("feed"))
+
+
 def add_agent_email(request):
     if request.method != "POST":
         return redirect("account")
@@ -1280,6 +1336,41 @@ def workspace_collection_detail(request, collection_id):
         agent=current_agent,
     )
     collection_items = get_collection_items(collection)
+    if request.method == "POST":
+        if "clear_alert" in request.POST:
+            CollectionFilter.objects.filter(collection=collection).delete()
+            collection.notifications_enabled = False
+            collection.save(update_fields=["notifications_enabled"])
+            messages.success(request, "Collection alert cleared")
+            return redirect("workspace_collection_detail", collection_id=collection.id)
+
+        form = CollectionAlertSettingsForm(request.POST)
+        if form.is_valid():
+            collection.name = form.cleaned_data["name"]
+            collection.notifications_enabled = form.cleaned_data["notifications_enabled"]
+            collection.save(update_fields=["name", "notifications_enabled"])
+            filter_params = build_filter_query_from_cleaned_data(form.cleaned_data)
+            if filter_params:
+                CollectionFilter.objects.update_or_create(
+                    collection=collection,
+                    defaults={
+                        "city": form.cleaned_data.get("city", ""),
+                        "stage": form.cleaned_data.get("stage", ""),
+                        "min_beds": form.cleaned_data.get("min_beds"),
+                        "min_baths": form.cleaned_data.get("min_baths"),
+                        "min_price": form.cleaned_data.get("min_price"),
+                        "max_price": form.cleaned_data.get("max_price"),
+                    },
+                )
+            elif not collection.notifications_enabled:
+                CollectionFilter.objects.filter(collection=collection).delete()
+            else:
+                messages.error(request, "Add at least one filter before enabling collection alerts.")
+                return redirect("workspace_collection_detail", collection_id=collection.id)
+            messages.success(request, "Collection alert updated")
+            return redirect("workspace_collection_detail", collection_id=collection.id)
+        messages.error(request, "Enter a valid collection setup before saving.")
+        return redirect("workspace_collection_detail", collection_id=collection.id)
 
     return render(
         request,
@@ -1287,9 +1378,17 @@ def workspace_collection_detail(request, collection_id):
         {
             "collection": collection,
             "collection_summary": build_collection_summary(collection),
+            "collection_alert_form": CollectionAlertSettingsForm(
+                initial={
+                    "name": collection.name,
+                    "notifications_enabled": collection.notifications_enabled,
+                    **get_collection_filter_data(collection),
+                }
+            ),
             "current_agent": current_agent,
             "current_agent_initials": get_agent_initials(current_agent),
             "current_agent_membership": get_agent_membership_level(current_agent),
+            "unread_notification_count": get_unread_notification_count(current_agent),
             "collection_items": collection_items,
         },
     )
@@ -1389,6 +1488,7 @@ def post_listing(request):
                 city=listing.city,
             )
             listing.save()
+            send_collection_match_alerts_for_listing(listing)
             return redirect("feed")
     else:
         form = ListingForm()
@@ -1421,6 +1521,8 @@ def edit_listing(request, listing_id):
                 city=updated_listing.city,
             )
             updated_listing.save()
+            if updated_listing.is_active:
+                send_collection_match_alerts_for_listing(updated_listing)
             messages.success(request, "Listing updated")
             return redirect(redirect_target)
     else:
@@ -1476,7 +1578,10 @@ def confirm_listing_from_email(request, token):
             status=404,
         )
 
+    was_inactive = not listing.is_active
     listing.mark_confirmed()
+    if was_inactive:
+        send_collection_match_alerts_for_listing(listing)
     return render(
         request,
         "listing_checkin_result.html",
@@ -1524,7 +1629,7 @@ def save_collection(request):
         )
         return redirect("feed")
 
-    collection_form = CollectionForm(request.POST)
+    collection_form = CollectionAlertSaveForm(request.POST, agent=agent)
     filter_form = FeedFilterForm(request.POST)
     raw_filter_params = {
         key: value
@@ -1534,7 +1639,7 @@ def save_collection(request):
     redirect_url = f'{reverse("feed")}?{urlencode(raw_filter_params)}' if raw_filter_params else reverse("feed")
 
     if not collection_form.is_valid() or not filter_form.is_valid():
-        messages.error(request, "Enter a collection name and valid filter values before saving.")
+        messages.error(request, "Choose a collection or create a new one with valid filter values.")
         return redirect(redirect_url)
 
     filter_params = build_filter_query_from_cleaned_data(filter_form.cleaned_data)
@@ -1542,11 +1647,20 @@ def save_collection(request):
         messages.error(request, "Apply at least one filter before saving a collection.")
         return redirect(redirect_url)
 
-    collection, _ = Collection.objects.update_or_create(
-        agent=agent,
-        name=collection_form.cleaned_data["name"],
-        defaults={},
-    )
+    collection_choice = collection_form.cleaned_data["collection_choice"]
+    if collection_choice == "__new__":
+        collection, _ = Collection.objects.get_or_create(
+            agent=agent,
+            name=collection_form.cleaned_data["new_collection_name"],
+        )
+    else:
+        collection = Collection.objects.filter(agent=agent, pk=collection_choice).first()
+        if collection is None:
+            messages.error(request, "Choose a valid collection before saving this alert.")
+            return redirect(redirect_url)
+
+    collection.notifications_enabled = collection_form.cleaned_data["notifications_enabled"]
+    collection.save(update_fields=["notifications_enabled"])
     CollectionFilter.objects.update_or_create(
         collection=collection,
         defaults={
@@ -1558,7 +1672,10 @@ def save_collection(request):
             "max_price": filter_form.cleaned_data.get("max_price"),
         },
     )
-    messages.success(request, "Collection saved")
+    messages.success(
+        request,
+        "Collection alert saved" if collection.notifications_enabled else "Collection saved",
+    )
 
     query = urlencode(filter_params)
     redirect_url = f'{reverse("feed")}?{query}' if query else reverse("feed")
@@ -1592,6 +1709,34 @@ def toggle_saved_listing(request, listing_id):
         saved_listing.delete()
 
     return redirect(redirect_target)
+
+
+def update_notification_preferences(request):
+    if request.method != "POST":
+        return redirect("account")
+
+    current_agent = get_current_agent(request)
+    if current_agent is None:
+        messages.error(request, "No active agent account is available.")
+        return redirect("landing")
+
+    form = NotificationPreferencesForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Enter valid notification preferences.")
+        return redirect("account")
+
+    current_agent.freshness_reminder_emails = form.cleaned_data["freshness_reminder_emails"]
+    current_agent.collection_match_emails = form.cleaned_data["collection_match_emails"]
+    current_agent.product_update_emails = form.cleaned_data["product_update_emails"]
+    current_agent.save(
+        update_fields=[
+            "freshness_reminder_emails",
+            "collection_match_emails",
+            "product_update_emails",
+        ]
+    )
+    messages.success(request, "Notification preferences updated")
+    return redirect("account")
 
 
 def confirm_listing_availability(request, listing_id):

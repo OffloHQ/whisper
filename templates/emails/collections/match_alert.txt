@@ -1,0 +1,13 @@
+{% load listing_extras %}
+A new Whisper board posting matches your saved intent.
+
+{{ listing.title }}
+{{ listing.city }} | {{ listing.get_stage_display }} | {{ listing.price_min|compact_price }} to {{ listing.price_max|compact_price }}
+
+Matched collections:
+{% for collection_name in collection_names %}
+- {{ collection_name }}
+{% endfor %}
+
+Open the board:
+{{ site_base_url }}/board/

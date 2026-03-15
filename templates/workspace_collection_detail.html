@@ -28,6 +28,55 @@
     .workspace-detail-shell {
         max-width: 980px;
     }
+    .alert-settings-disclosure {
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 18px;
+        overflow: hidden;
+    }
+    .alert-settings-disclosure[open] {
+        background: rgba(255, 252, 246, 0.96);
+    }
+    .alert-settings-summary {
+        align-items: center;
+        cursor: pointer;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        list-style: none;
+        padding: 1rem 1.05rem;
+    }
+    .alert-settings-summary::-webkit-details-marker {
+        display: none;
+    }
+    .alert-settings-summary-copy {
+        display: grid;
+        gap: 0.3rem;
+        min-width: 0;
+    }
+    .alert-settings-summary-title {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+    }
+    .alert-settings-state {
+        background: rgba(31, 26, 20, 0.08);
+        border-radius: 999px;
+        font-size: 0.78rem;
+        padding: 0.22rem 0.55rem;
+    }
+    .alert-settings-chevron {
+        color: var(--muted);
+        flex: 0 0 auto;
+        transition: transform 160ms ease;
+    }
+    .alert-settings-disclosure[open] .alert-settings-chevron {
+        transform: rotate(180deg);
+    }
+    .alert-settings-body {
+        border-top: 1px solid rgba(31, 26, 20, 0.08);
+        padding: 1rem 1.05rem 0;
+    }
     .account-overlay {
         background: rgba(31, 26, 20, 0.32);
         inset: 0;
@@ -110,6 +159,9 @@
             padding: 2rem 2rem 4rem;
         }
     }
+    .workspace-detail-shell input[type="checkbox"] {
+        width: auto;
+    }
 </style>
 {% endblock %}
 
@@ -125,6 +177,75 @@
         <h1 style="margin:0;">{{ collection.name }}</h1>
     </div>
     <p class="muted" style="margin:0;">{{ collection_summary }}</p>
+</section>
+
+<section class="card" style="display:grid; gap:1rem; margin-top:1rem;">
+    <details class="alert-settings-disclosure">
+        <summary class="alert-settings-summary">
+            <div class="alert-settings-summary-copy">
+                <div class="alert-settings-summary-title">
+                    <strong>Alert Settings</strong>
+                    <span class="alert-settings-state">
+                        {% if collection.notifications_enabled %}Alerts On{% else %}Alerts Off{% endif %}
+                    </span>
+                </div>
+                <p class="muted" style="margin:0;">
+                    {% if collection_summary and collection_summary != "No saved criteria yet." %}
+                        {{ collection_summary }}
+                    {% else %}
+                        No saved filter criteria yet.
+                    {% endif %}
+                </p>
+            </div>
+            <svg class="alert-settings-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                <path d="m6 9 6 6 6-6"></path>
+            </svg>
+        </summary>
+        <div class="alert-settings-body">
+            <p class="muted" style="margin:0 0 1rem;">Update the saved filter tied to this collection, toggle email alerts, or clear the alert entirely.</p>
+            <form method="post" style="display:grid; gap:0.85rem;">
+                {% csrf_token %}
+                <div>
+                    <label for="{{ collection_alert_form.name.id_for_label }}">Collection name</label>
+                    {{ collection_alert_form.name }}
+                </div>
+                <div>
+                    <label for="{{ collection_alert_form.city.id_for_label }}">Town / Area</label>
+                    {{ collection_alert_form.city }}
+                </div>
+                <div>
+                    <label for="{{ collection_alert_form.stage.id_for_label }}">Stage</label>
+                    {{ collection_alert_form.stage }}
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:0.75rem;">
+                    <div>
+                        <label for="{{ collection_alert_form.min_beds.id_for_label }}">Minimum beds</label>
+                        {{ collection_alert_form.min_beds }}
+                    </div>
+                    <div>
+                        <label for="{{ collection_alert_form.min_baths.id_for_label }}">Minimum baths</label>
+                        {{ collection_alert_form.min_baths }}
+                    </div>
+                    <div>
+                        <label for="{{ collection_alert_form.min_price.id_for_label }}">Minimum price</label>
+                        {{ collection_alert_form.min_price }}
+                    </div>
+                    <div>
+                        <label for="{{ collection_alert_form.max_price.id_for_label }}">Maximum price</label>
+                        {{ collection_alert_form.max_price }}
+                    </div>
+                </div>
+                <label style="display:flex; gap:0.65rem; align-items:center;">
+                    {{ collection_alert_form.notifications_enabled }}
+                    <span>Email me when a new post matches</span>
+                </label>
+                <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                    <button type="submit">Save Alert Settings</button>
+                    <button type="submit" name="clear_alert" value="1" style="background:transparent; color:var(--text); border:1px solid rgba(31, 26, 20, 0.12);">Clear Alert</button>
+                </div>
+            </form>
+        </div>
+    </details>
 </section>
 
 <section class="card" style="display:grid; gap:1rem; margin-top:1rem;">

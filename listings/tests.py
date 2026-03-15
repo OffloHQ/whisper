@@ -35,7 +35,8 @@ from .checkins import (
 from .email_flows import build_agent_email_verification_token
 from .intake import WAITLIST_TOAST_MESSAGE, approve_access_request, reject_access_request
 from .forms import FeedFilterForm, ListingForm
-from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, Listing, SavedListing
+from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, EmailNotificationLog, InAppNotification, Listing, SavedListing
+from .retention import get_cleanup_querysets
 from .utils import format_listing_price, get_town_area_choices
 from .verification.schemas import VerificationResult, VerificationStatus
 from .views import CURRENT_AGENT_LOCKED_OUT_KEY, CURRENT_AGENT_SESSION_KEY
@@ -573,6 +574,179 @@ class FrontDoorMagicLinkTests(TestCase):
         response = self.client.get(reverse("request_access"), {"email": "prefill@example.com"})
 
         self.assertContains(response, 'value="prefill@example.com"', html=False)
+
+    def test_landing_can_render_qr_panel_for_active_agent(self):
+        agent = create_agent(
+            name="QR Agent",
+            email="qr@example.com",
+            license_number="LIC-QR",
+            is_verified=True,
+        )
+
+        response = self.client.post(
+            reverse("landing"),
+            {"email": agent.email, "sign_in_method": "qr"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        token = AuthAccessToken.objects.get(email=agent.email, delivery_method=AuthAccessToken.DeliveryMethod.QR)
+        self.assertContains(response, "Scan with your phone to sign in.")
+        self.assertContains(response, reverse("qr_sign_in_status", args=[token.token]))
+
+    def test_qr_sign_in_marks_token_completed_and_signs_in_phone(self):
+        agent = create_agent(
+            name="Phone QR Agent",
+            email="phone-qr@example.com",
+            license_number="LIC-PHONE-QR",
+            is_verified=True,
+        )
+        token = AuthAccessToken.objects.create(
+            agent=agent,
+            email=agent.email,
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        response = self.client.get(reverse("consume_auth_access_token", args=[token.token]), follow=True)
+
+        self.assertRedirects(response, reverse("feed"))
+        token.refresh_from_db()
+        self.assertIsNotNone(token.completed_at)
+        self.assertIsNotNone(token.used_at)
+
+    def test_qr_status_authenticates_desktop_after_phone_completion(self):
+        agent = create_agent(
+            name="Desktop QR Agent",
+            email="desktop-qr@example.com",
+            license_number="LIC-DESKTOP-QR",
+            is_verified=True,
+        )
+        token = AuthAccessToken.objects.create(
+            agent=agent,
+            email=agent.email,
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() + timedelta(minutes=10),
+            completed_at=timezone.now(),
+            used_at=timezone.now(),
+        )
+
+        response = self.client.get(reverse("qr_sign_in_status", args=[token.token]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "authenticated")
+        token.refresh_from_db()
+        self.assertIsNotNone(token.desktop_authenticated_at)
+        session = self.client.session
+        self.assertEqual(session[CURRENT_AGENT_SESSION_KEY], agent.id)
+
+
+@override_settings(
+    AUTH_TOKEN_RETENTION_DAYS=14,
+    QR_AUTH_TOKEN_EXPIRED_RETENTION_DAYS=1,
+    QR_AUTH_TOKEN_USED_RETENTION_DAYS=7,
+    ACCESS_REQUEST_RETENTION_DAYS=90,
+    REJECTED_ACCESS_REQUEST_RETENTION_DAYS=90,
+)
+class RetentionCleanupTests(TestCase):
+    def setUp(self):
+        self.agent = create_agent(
+            name="Retention Agent",
+            email="retention@example.com",
+            license_number="LIC-RETENTION",
+            is_verified=True,
+        )
+
+    def test_expired_qr_tokens_are_selected_for_cleanup(self):
+        stale_qr = AuthAccessToken.objects.create(
+            agent=self.agent,
+            email=self.agent.email,
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() - timedelta(days=2),
+        )
+        fresh_qr = AuthAccessToken.objects.create(
+            agent=self.agent,
+            email="fresh-qr@example.com",
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() - timedelta(hours=12),
+        )
+
+        cleanup_targets = get_cleanup_querysets()
+
+        self.assertIn(stale_qr, cleanup_targets["auth_tokens.qr_expired"])
+        self.assertNotIn(fresh_qr, cleanup_targets["auth_tokens.qr_expired"])
+
+    def test_stale_access_requests_are_selected_conservatively(self):
+        stale_pending = AccessRequest.objects.create(
+            email="stale-pending@example.com",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        AccessRequest.objects.filter(pk=stale_pending.pk).update(updated_at=timezone.now() - timedelta(days=91))
+
+        stale_rejected = AccessRequest.objects.create(
+            email="stale-rejected@example.com",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.REJECTED,
+        )
+        AccessRequest.objects.filter(pk=stale_rejected.pk).update(updated_at=timezone.now() - timedelta(days=91))
+
+        protected = AccessRequest.objects.create(
+            email=self.agent.email,
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        AccessRequest.objects.filter(pk=protected.pk).update(updated_at=timezone.now() - timedelta(days=120))
+
+        cleanup_targets = get_cleanup_querysets()
+
+        self.assertIn(stale_pending, cleanup_targets["access_requests.pending_or_waitlist"])
+        self.assertIn(stale_rejected, cleanup_targets["access_requests.rejected"])
+        self.assertNotIn(protected, cleanup_targets["access_requests.pending_or_waitlist"])
+
+    def test_cleanup_retention_dry_run_does_not_delete(self):
+        AuthAccessToken.objects.create(
+            agent=self.agent,
+            email=self.agent.email,
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() - timedelta(days=2),
+        )
+        stale_request = AccessRequest.objects.create(
+            email="dry-run@example.com",
+            status=AccessRequest.Status.REQUESTED,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        AccessRequest.objects.filter(pk=stale_request.pk).update(updated_at=timezone.now() - timedelta(days=91))
+
+        output = StringIO()
+        call_command("cleanup_retention", "--dry-run", stdout=output)
+
+        self.assertIn("auth_tokens.qr_expired: 1 would delete", output.getvalue())
+        self.assertEqual(AuthAccessToken.objects.count(), 1)
+        self.assertEqual(AccessRequest.objects.count(), 1)
+
+    def test_cleanup_retention_delete_mode_deletes_selected_records(self):
+        stale_token = AuthAccessToken.objects.create(
+            agent=self.agent,
+            email=self.agent.email,
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() - timedelta(days=2),
+        )
+        stale_request = AccessRequest.objects.create(
+            email="delete-me@example.com",
+            status=AccessRequest.Status.REQUESTED,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        AccessRequest.objects.filter(pk=stale_request.pk).update(updated_at=timezone.now() - timedelta(days=91))
+
+        output = StringIO()
+        call_command("cleanup_retention", stdout=output)
+
+        self.assertIn("Cleanup complete. Deleted 2 records.", output.getvalue())
+        self.assertFalse(AuthAccessToken.objects.filter(pk=stale_token.pk).exists())
+        self.assertFalse(AccessRequest.objects.filter(pk=stale_request.pk).exists())
 
 
 @override_settings(
@@ -1383,6 +1557,14 @@ class AccountAreaTests(TestCase):
         self.assertContains(response, "Saved Opportunities")
         self.assertContains(response, "Collections")
         self.assertContains(response, "Delete Membership")
+        self.assertContains(response, "Collection match emails")
+        self.assertContains(response, "Product update emails")
+        self.assertContains(response, "Freshness reminder emails")
+        self.assertContains(response, "Account &amp; security emails")
+        self.assertContains(response, "Always On")
+        self.assertContains(response, "Occasional emails when Whisper launches in new areas or rolls out major features.")
+        self.assertNotContains(response, "Contact and activity emails")
+        self.assertNotContains(response, "Planned")
 
     def test_feed_settings_and_identity_link_to_account_area(self):
         response = self.client.get(reverse("feed"))
@@ -1498,7 +1680,31 @@ class AccountAreaTests(TestCase):
         self.assertRedirects(response, reverse("account"))
         self.agent.refresh_from_db()
         self.assertTrue(self.agent.show_email_to_agents)
-        self.assertContains(response, "Contact visibility updated.")
+
+    def test_notification_settings_save_behavior(self):
+        response = self.client.post(
+            reverse("update_notification_preferences"),
+            {
+                "freshness_reminder_emails": "",
+                "collection_match_emails": "on",
+                "product_update_emails": "on",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("account"))
+        self.assertContains(response, "Notification preferences updated")
+        self.agent.refresh_from_db()
+        self.assertFalse(self.agent.freshness_reminder_emails)
+        self.assertTrue(self.agent.collection_match_emails)
+        self.assertTrue(self.agent.product_update_emails)
+
+    def test_account_security_section_is_informational_only(self):
+        response = self.client.get(reverse("account"))
+
+        self.assertContains(response, "Account &amp; security emails")
+        self.assertContains(response, "access-status emails stay on")
+        self.assertNotContains(response, 'name="account_security_emails"', html=False)
 
     def test_add_update_and_delete_phone(self):
         add_response = self.client.post(reverse("add_agent_phone"), {"phone_number": "914-555-0000"}, follow=True)
@@ -1782,6 +1988,7 @@ class FeedFilteringTests(TestCase):
         self.assertNotContains(response, "White Plains condo.")
 
 
+@override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class CollectionTests(TestCase):
     def setUp(self):
         self.agent = create_agent(
@@ -1819,7 +2026,8 @@ class CollectionTests(TestCase):
         response = self.client.post(
             reverse("save_collection"),
             {
-                "name": "Scarsdale Premarket",
+                "collection_choice": "__new__",
+                "new_collection_name": "Scarsdale Premarket",
                 "city": "Scarsdale",
                 "stage": Listing.Stage.PREMARKET,
                 "min_beds": "3",
@@ -1845,7 +2053,8 @@ class CollectionTests(TestCase):
         saved_response = self.client.post(
             reverse("save_collection"),
             {
-                "name": "Scarsdale Premarket Two",
+                "collection_choice": "__new__",
+                "new_collection_name": "Scarsdale Premarket Two",
                 "city": "Scarsdale",
                 "stage": Listing.Stage.PREMARKET,
                 "min_beds": "3",
@@ -1866,15 +2075,14 @@ class CollectionTests(TestCase):
             },
         )
 
-        self.assertContains(response, "data-collection-save-trigger")
-        self.assertContains(response, "Save Collection")
-        self.assertContains(response, ">Save</button>", html=False)
+        self.assertContains(response, "Save this intent")
+        self.assertContains(response, "Save to Collection")
+        self.assertContains(response, "Notify me when a new post matches this filter")
 
     def test_feed_disables_save_collection_without_filters(self):
         response = self.client.get(reverse("feed"))
 
-        self.assertContains(response, "class=\"collection-save-trigger\" disabled")
-        self.assertContains(response, "Apply filters first to save this collection.")
+        self.assertNotContains(response, "Save this intent")
 
     def test_feed_renders_saved_collection_links_and_loads_them(self):
         collection = Collection.objects.create(agent=self.agent, name="Private Rye")
@@ -1911,6 +2119,304 @@ class CollectionTests(TestCase):
 
         self.assertContains(loaded_response, "Rye private listing.")
         self.assertNotContains(loaded_response, "Scarsdale premarket.")
+
+    def test_empty_state_shows_collection_alert_checkbox_flow(self):
+        response = self.client.get(
+            reverse("feed"),
+            {
+                "city": "Scarsdale",
+                "stage": Listing.Stage.PRIVATE,
+            },
+        )
+
+        self.assertContains(response, "No current opportunities")
+        self.assertContains(response, "Adjust your filters or clear them to widen the board.")
+        self.assertContains(response, "Notify me when a new post matches this filter")
+        self.assertContains(response, "We’ll save this as a collection alert.")
+
+    def test_save_filtered_intent_to_existing_collection_enables_notifications(self):
+        existing_collection = Collection.objects.create(agent=self.agent, name="Scarsdale Buyers")
+
+        response = self.client.post(
+            reverse("save_collection"),
+            {
+                "collection_choice": str(existing_collection.id),
+                "new_collection_name": "",
+                "notifications_enabled": "on",
+                "city": "Scarsdale",
+                "stage": Listing.Stage.PREMARKET,
+                "min_beds": "3",
+                "min_baths": "2.0",
+                "min_price": "1M",
+                "max_price": "1.2M",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Collection alert saved")
+        existing_collection.refresh_from_db()
+        self.assertTrue(existing_collection.notifications_enabled)
+        self.assertEqual(existing_collection.saved_filter.city, "Scarsdale")
+
+    def test_save_filtered_intent_can_create_new_named_collection(self):
+        response = self.client.post(
+            reverse("save_collection"),
+            {
+                "collection_choice": "__new__",
+                "new_collection_name": "Beekman Collection",
+                "notifications_enabled": "on",
+                "city": "Scarsdale",
+                "stage": Listing.Stage.PREMARKET,
+                "min_beds": "3",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Collection alert saved")
+        collection = Collection.objects.get(name="Beekman Collection")
+        self.assertTrue(collection.notifications_enabled)
+        self.assertEqual(collection.saved_filter.city, "Scarsdale")
+
+    def test_new_matching_post_sends_collection_alert_email_once(self):
+        subscriber = create_agent(
+            name="Subscriber Agent",
+            email="subscriber@example.com",
+            license_number="LIC-SUBSCRIBER",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Beekman Collection",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(
+            collection=subscriber_collection,
+            city="Scarsdale",
+            stage=Listing.Stage.PREMARKET,
+            min_beds=3,
+        )
+
+        poster = create_agent(
+            name="Poster Agent",
+            email="poster@example.com",
+            license_number="LIC-POSTER",
+            is_verified=True,
+        )
+        login_agent(self.client, poster)
+
+        response = self.client.post(
+            reverse("post_listing"),
+            {
+                "city": "Scarsdale",
+                "beds": 3,
+                "baths": "2.0",
+                "price_min": "1M",
+                "price_max": "1.2M",
+                "stage": Listing.Stage.PREMARKET,
+                "property_type": "House",
+                "description": "New matching post.",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("feed"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Whisper — New Board Posting matches Beekman Collection")
+        listing = Listing.objects.get(agent=poster, city="Scarsdale")
+        self.assertTrue(
+            EmailNotificationLog.objects.filter(
+                collection=subscriber_collection,
+                listing=listing,
+                notification_type=EmailNotificationLog.NotificationType.COLLECTION_MATCH,
+            ).exists()
+        )
+
+    def test_collection_match_duplicate_prevention(self):
+        subscriber = create_agent(
+            name="Repeat Subscriber",
+            email="repeat-subscriber@example.com",
+            license_number="LIC-REPEAT-SUBSCRIBER",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Repeat Collection",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(collection=subscriber_collection, city="Scarsdale")
+        listing = Listing.objects.create(
+            agent=self.agent,
+            title="3 Bed / 2.0 Bath in Scarsdale",
+            city="Scarsdale",
+            property_type="House",
+            beds=3,
+            baths="2.0",
+            price_min=1000000,
+            price_max=1200000,
+            stage=Listing.Stage.PREMARKET,
+            description="Scarsdale premarket.",
+        )
+
+        from .collection_alerts import send_collection_match_alerts_for_listing
+
+        send_collection_match_alerts_for_listing(listing)
+        send_collection_match_alerts_for_listing(listing)
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            EmailNotificationLog.objects.filter(
+                collection=subscriber_collection,
+                listing=listing,
+                notification_type=EmailNotificationLog.NotificationType.COLLECTION_MATCH,
+            ).count(),
+            1,
+        )
+
+    def test_in_app_notification_is_created_on_collection_match(self):
+        subscriber = create_agent(
+            name="In App Subscriber",
+            email="inapp@example.com",
+            license_number="LIC-INAPP",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Scarsdale Match",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(collection=subscriber_collection, city="Scarsdale")
+
+        poster = create_agent(
+            name="In App Poster",
+            email="inapp-poster@example.com",
+            license_number="LIC-INAPP-POSTER",
+            is_verified=True,
+        )
+        login_agent(self.client, poster)
+
+        self.client.post(
+            reverse("post_listing"),
+            {
+                "city": "Scarsdale",
+                "beds": 3,
+                "baths": "2.0",
+                "price_min": "1M",
+                "price_max": "1.2M",
+                "stage": Listing.Stage.PREMARKET,
+                "property_type": "House",
+                "description": "In-app match post.",
+            },
+        )
+
+        notification = InAppNotification.objects.get(agent=subscriber)
+        self.assertEqual(notification.notification_type, InAppNotification.NotificationType.COLLECTION_MATCH)
+        self.assertEqual(notification.collection, subscriber_collection)
+        self.assertFalse(notification.is_read)
+        self.assertIn("Scarsdale Match", notification.title)
+
+    def test_notification_open_marks_read_and_redirects_to_destination(self):
+        notification = InAppNotification.objects.create(
+            agent=self.agent,
+            notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
+            title="New board posting matches Core Buyers",
+            body="A matching listing is live.",
+            link_url="/board/?city=Scarsdale",
+        )
+
+        response = self.client.get(reverse("open_notification", args=[notification.id]))
+
+        self.assertRedirects(response, "/board/?city=Scarsdale", fetch_redirect_response=False)
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+
+    def test_notifications_page_shows_unread_items(self):
+        InAppNotification.objects.create(
+            agent=self.agent,
+            notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
+            title="New board posting matches Core Buyers",
+            body="A matching listing is live.",
+            link_url="/board/?city=Scarsdale",
+        )
+
+        response = self.client.get(reverse("notifications"))
+
+        self.assertContains(response, "Notifications")
+        self.assertContains(response, "New board posting matches Core Buyers")
+        self.assertContains(response, "Unread")
+
+    def test_collection_alert_fallback_command_dry_run_is_safe(self):
+        subscriber = create_agent(
+            name="Fallback Subscriber",
+            email="fallback@example.com",
+            license_number="LIC-FALLBACK",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Fallback Collection",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(collection=subscriber_collection, city="White Plains")
+        listing = Listing.objects.create(
+            agent=self.agent,
+            title="2 Bed / 2.0 Bath in White Plains",
+            city="White Plains",
+            property_type="House",
+            beds=2,
+            baths="2.0",
+            price_min=700000,
+            price_max=850000,
+            stage=Listing.Stage.PREMARKET,
+            description="White Plains match.",
+        )
+
+        output = StringIO()
+        call_command("send_collection_match_alerts", "--dry-run", stdout=output)
+
+        self.assertIn("Fallback Collection", output.getvalue())
+        self.assertEqual(EmailNotificationLog.objects.count(), 0)
+        self.assertEqual(InAppNotification.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_collection_alert_fallback_command_skips_duplicates(self):
+        subscriber = create_agent(
+            name="Fallback Duplicate",
+            email="fallback-dup@example.com",
+            license_number="LIC-FALLBACK-DUP",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Duplicate Collection",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(collection=subscriber_collection, city="White Plains")
+        listing = Listing.objects.create(
+            agent=self.agent,
+            title="2 Bed / 2.0 Bath in White Plains",
+            city="White Plains",
+            property_type="House",
+            beds=2,
+            baths="2.0",
+            price_min=700000,
+            price_max=850000,
+            stage=Listing.Stage.PREMARKET,
+            description="White Plains match.",
+        )
+
+        output = StringIO()
+        call_command("send_collection_match_alerts", stdout=output)
+        self.assertIn("Sent 1 collection alert email(s).", output.getvalue())
+        self.assertEqual(EmailNotificationLog.objects.count(), 1)
+        self.assertEqual(InAppNotification.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
+        second_output = StringIO()
+        call_command("send_collection_match_alerts", stdout=second_output)
+        self.assertIn("Sent 0 collection alert email(s).", second_output.getvalue())
+        self.assertEqual(EmailNotificationLog.objects.count(), 1)
+        self.assertEqual(InAppNotification.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
 
 
 class SavedListingTests(TestCase):
@@ -2058,6 +2564,40 @@ class WorkspaceTests(TestCase):
         self.assertContains(response, "Scarsdale Buyers")
         self.assertContains(response, "3 Bed / 2.0 Bath in Scarsdale")
         self.assertNotContains(response, "4 Bed / 3.0 Bath in Rye")
+        self.assertContains(response, "Alert Settings")
+
+    def test_collection_alert_edit_and_clear_behavior(self):
+        response = self.client.post(
+            reverse("workspace_collection_detail", args=[self.collection.id]),
+            {
+                "name": "Updated Buyers",
+                "notifications_enabled": "on",
+                "city": "Rye",
+                "stage": Listing.Stage.PRIVATE,
+                "min_beds": "4",
+                "min_baths": "3.0",
+                "min_price": "2.2M",
+                "max_price": "2.6M",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Collection alert updated")
+        self.collection.refresh_from_db()
+        self.assertEqual(self.collection.name, "Updated Buyers")
+        self.assertTrue(self.collection.notifications_enabled)
+        self.assertEqual(self.collection.saved_filter.city, "Rye")
+
+        cleared = self.client.post(
+            reverse("workspace_collection_detail", args=[self.collection.id]),
+            {"clear_alert": "1"},
+            follow=True,
+        )
+
+        self.assertContains(cleared, "Collection alert cleared")
+        self.collection.refresh_from_db()
+        self.assertFalse(self.collection.notifications_enabled)
+        self.assertFalse(CollectionFilter.objects.filter(collection=self.collection).exists())
 
     def test_saved_listing_can_be_added_to_existing_collection(self):
         response = self.client.post(
@@ -2132,6 +2672,166 @@ class WorkspaceTests(TestCase):
         self.assertEqual(self.listing_one.description, "Updated owner copy.")
         self.assertEqual(self.listing_one.title, "5 Bed / 4.0 Bath in Rye")
         self.assertContains(response, "Listing updated")
+
+    @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_edit_active_listing_from_non_matching_to_matching_sends_collection_alert_and_in_app_notification(self):
+        subscriber = create_agent(
+            name="Edit Alert Subscriber",
+            email="edit-alert@example.com",
+            license_number="LIC-EDIT-ALERT",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Rye Watch",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(
+            collection=subscriber_collection,
+            city="Rye",
+            stage=Listing.Stage.PRIVATE,
+            min_beds=5,
+        )
+
+        response = self.client.post(
+            reverse("edit_listing", args=[self.listing_one.id]),
+            {
+                "city": "Rye",
+                "beds": 5,
+                "baths": "4.0",
+                "price_min": "2.1M",
+                "price_max": "2.4M",
+                "stage": Listing.Stage.PRIVATE,
+                "property_type": "House",
+                "description": "Updated owner copy.",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("workspace") + "?section=posts")
+        self.listing_one.refresh_from_db()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Whisper — New Board Posting matches Rye Watch")
+        self.assertTrue(
+            EmailNotificationLog.objects.filter(
+                collection=subscriber_collection,
+                listing=self.listing_one,
+                notification_type=EmailNotificationLog.NotificationType.COLLECTION_MATCH,
+            ).exists()
+        )
+        notification = InAppNotification.objects.get(agent=subscriber, collection=subscriber_collection, listing=self.listing_one)
+        self.assertEqual(notification.notification_type, InAppNotification.NotificationType.COLLECTION_MATCH)
+        self.assertFalse(notification.is_read)
+
+    @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_editing_again_does_not_duplicate_collection_alert(self):
+        subscriber = create_agent(
+            name="Edit Duplicate Subscriber",
+            email="edit-duplicate@example.com",
+            license_number="LIC-EDIT-DUPLICATE",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Rye Buyers",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(
+            collection=subscriber_collection,
+            city="Rye",
+            stage=Listing.Stage.PRIVATE,
+            min_beds=5,
+        )
+
+        edit_payload = {
+            "city": "Rye",
+            "beds": 5,
+            "baths": "4.0",
+            "price_min": "2.1M",
+            "price_max": "2.4M",
+            "stage": Listing.Stage.PRIVATE,
+            "property_type": "House",
+            "description": "Updated owner copy.",
+        }
+
+        self.client.post(reverse("edit_listing", args=[self.listing_one.id]), edit_payload, follow=True)
+        self.client.post(reverse("edit_listing", args=[self.listing_one.id]), edit_payload, follow=True)
+
+        self.listing_one.refresh_from_db()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            EmailNotificationLog.objects.filter(
+                collection=subscriber_collection,
+                listing=self.listing_one,
+                notification_type=EmailNotificationLog.NotificationType.COLLECTION_MATCH,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            InAppNotification.objects.filter(
+                agent=subscriber,
+                collection=subscriber_collection,
+                listing=self.listing_one,
+                notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
+            ).count(),
+            1,
+        )
+
+    @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_editing_inactive_listing_does_not_trigger_collection_alerts(self):
+        subscriber = create_agent(
+            name="Inactive Edit Subscriber",
+            email="inactive-edit@example.com",
+            license_number="LIC-INACTIVE-EDIT",
+            is_verified=True,
+        )
+        subscriber_collection = Collection.objects.create(
+            agent=subscriber,
+            name="Inactive Rye Watch",
+            notifications_enabled=True,
+        )
+        CollectionFilter.objects.create(
+            collection=subscriber_collection,
+            city="Rye",
+            stage=Listing.Stage.PRIVATE,
+            min_beds=5,
+        )
+        self.listing_one.is_active = False
+        self.listing_one.status = Listing.Status.REMOVED_BY_AGENT
+        self.listing_one.save(update_fields=["is_active", "status"])
+
+        response = self.client.post(
+            reverse("edit_listing", args=[self.listing_one.id]),
+            {
+                "city": "Rye",
+                "beds": 5,
+                "baths": "4.0",
+                "price_min": "2.1M",
+                "price_max": "2.4M",
+                "stage": Listing.Stage.PRIVATE,
+                "property_type": "House",
+                "description": "Updated owner copy.",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("workspace") + "?section=posts")
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertFalse(
+            EmailNotificationLog.objects.filter(
+                collection=subscriber_collection,
+                listing=self.listing_one,
+                notification_type=EmailNotificationLog.NotificationType.COLLECTION_MATCH,
+            ).exists()
+        )
+        self.assertFalse(
+            InAppNotification.objects.filter(
+                agent=subscriber,
+                collection=subscriber_collection,
+                listing=self.listing_one,
+                notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
+            ).exists()
+        )
 
     def test_non_owner_cannot_edit_another_users_post(self):
         other_agent = create_agent(
