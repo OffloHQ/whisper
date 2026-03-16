@@ -670,6 +670,7 @@ def request_access(request):
         form = RequestAccessForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data["email"].lower()
+            logger.info("request_access form valid for %s", email)
             existing_agent = AgentUser.objects.filter(email=email, is_active=True, deleted_at__isnull=True).first()
             if existing_agent is not None:
                 messages.error(request, "This email already has Whisper access. Use Log In.")
@@ -679,14 +680,18 @@ def request_access(request):
             access_request.status = AccessRequest.Status.LINK_SENT
             access_request.signup_sent_at = timezone.now()
             access_request.save(update_fields=["status", "signup_sent_at", "updated_at"])
+            logger.info("request_access saved access request %s for %s", access_request.pk, email)
             signup_url = None
             if getattr(settings, "DEV_EXPOSE_SIGNUP_LINKS", False):
                 signup_url = request.build_absolute_uri(
                     reverse("signup_identity", args=[build_access_request_signup_token(access_request)])
                 )
             try:
+                logger.info("request_access attempting signup email for %s", email)
                 send_access_request_signup_email(request, access_request)
+                logger.info("request_access signup email sent for %s", email)
             except Exception:
+                logger.exception("request_access signup email failed for %s", email)
                 if not settings.DEBUG:
                     raise
                 logger.warning(
