@@ -228,3 +228,30 @@ NY_OPEN_DATA_BASE_URL = os.getenv("NY_OPEN_DATA_BASE_URL")
 NY_REAL_ESTATE_DATASET_ID = os.getenv("NY_REAL_ESTATE_DATASET_ID")
 NY_LICENSE_API_APP_TOKEN = os.getenv("NY_LICENSE_API_APP_TOKEN")
 NY_LICENSE_API_TIMEOUT = int(os.getenv("NY_LICENSE_API_TIMEOUT", "10"))
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        "listings": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
