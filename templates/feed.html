@@ -656,7 +656,7 @@
                     </div>
                     <label class="collection-alert-checkbox-row">
                         {{ collection_form.notifications_enabled }}
-                        <span>Notify me when a new post matches this filter</span>
+                        <span>Notify me when a new opportunity matches this filter</span>
                     </label>
                     <button type="submit">Save to Collection</button>
                 </form>
@@ -673,7 +673,7 @@
                             <button
                                 type="submit"
                                 class="listing-save-button save-listing-button{% if listing.id in saved_listing_ids %} is-saved{% endif %}"
-                                aria-label="{% if listing.id in saved_listing_ids %}Unsave listing{% else %}Save listing{% endif %}"
+                                aria-label="{% if listing.id in saved_listing_ids %}Unsave opportunity{% else %}Save opportunity{% endif %}"
                             >
                                 {% if listing.id in saved_listing_ids %}★{% else %}☆{% endif %}
                             </button>
@@ -749,7 +749,7 @@
                     {% if active_filters %}
                         <label class="collection-alert-checkbox-row" style="margin-top:0.4rem;">
                             <input type="checkbox" id="empty-state-alert-toggle">
-                            <span>Notify me when a new post matches this filter</span>
+                            <span>Notify me when a new opportunity matches this filter</span>
                         </label>
                         <p class="collection-alert-inline-note">We’ll save this as a collection alert.</p>
                         <form method="post" action="{% url 'save_collection' %}" class="collection-alert-form collection-alert-builder" id="empty-state-alert-builder" hidden>
@@ -812,18 +812,18 @@
 
 <div class="listing-overlay{% if show_listing_form %} is-open{% endif %}" id="listing-overlay" aria-hidden="{% if show_listing_form %}false{% else %}true{% endif %}">
     <div class="listing-overlay-backdrop" data-close-overlay="listing-overlay"></div>
-    <section class="listing-sheet" aria-label="Post listing">
+    <section class="listing-sheet" aria-label="Share opportunity">
         <div class="drawer-header">
             <div>
-                <h2>Post Listing</h2>
+                <h2>Share Opportunity</h2>
                 <p>Share a quiet opportunity with the Whisper board.</p>
             </div>
-            <button type="button" class="drawer-close" data-close-overlay="listing-overlay" aria-label="Close listing form">
+            <button type="button" class="drawer-close" data-close-overlay="listing-overlay" aria-label="Close opportunity form">
                 &times;
             </button>
         </div>
         <div class="listing-sheet-body">
-            {% include "includes/listing_form.html" with form_action=post_form_action submit_label="Submit Listing" %}
+            {% include "includes/listing_form.html" with form_action=post_form_action submit_label="Share Opportunity" %}
         </div>
     </section>
 </div>

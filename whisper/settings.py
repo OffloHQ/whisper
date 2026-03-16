@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
 
@@ -52,6 +53,8 @@ if not DEBUG and SECRET_KEY == "django-insecure-whisper-dev-key":
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
 DEV_EXPOSE_SIGNUP_LINKS = env_bool("DEV_EXPOSE_SIGNUP_LINKS", False)
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+WHISPER_TERMS_VERSION = os.getenv("WHISPER_TERMS_VERSION", "2026-03-v1")
+WHISPER_PRIVACY_VERSION = os.getenv("WHISPER_PRIVACY_VERSION", "2026-03-v1")
 if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
@@ -77,6 +80,7 @@ if whitenoise is not None:
 
 MIDDLEWARE += [
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'listings.middleware.LegalAcceptanceMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -172,13 +176,19 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
+RUNNING_TESTS = "test" in sys.argv
+
 if whitenoise is not None:
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
         "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.StaticFilesStorage"
+                if DEBUG or RUNNING_TESTS
+                else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            ),
         },
     }
 
@@ -200,11 +210,14 @@ ACCOUNT_EMAIL_VERIFICATION_LINK_MAX_AGE = 60 * 60 * 24 * 7
 ACCESS_REQUEST_SIGNUP_LINK_MAX_AGE = 60 * 60 * 24 * 7
 AUTH_ACCESS_TOKEN_MAX_AGE = int(os.getenv("AUTH_ACCESS_TOKEN_MAX_AGE", str(60 * 30)))
 QR_AUTH_ACCESS_TOKEN_MAX_AGE = int(os.getenv("QR_AUTH_ACCESS_TOKEN_MAX_AGE", str(60 * 10)))
+
+# Retention policy: V1 only auto-cleans low-risk transient records.
 AUTH_TOKEN_RETENTION_DAYS = int(os.getenv("AUTH_TOKEN_RETENTION_DAYS", "14"))
 QR_AUTH_TOKEN_EXPIRED_RETENTION_DAYS = int(os.getenv("QR_AUTH_TOKEN_EXPIRED_RETENTION_DAYS", "1"))
 QR_AUTH_TOKEN_USED_RETENTION_DAYS = int(os.getenv("QR_AUTH_TOKEN_USED_RETENTION_DAYS", "7"))
 ACCESS_REQUEST_RETENTION_DAYS = int(os.getenv("ACCESS_REQUEST_RETENTION_DAYS", "90"))
 REJECTED_ACCESS_REQUEST_RETENTION_DAYS = int(os.getenv("REJECTED_ACCESS_REQUEST_RETENTION_DAYS", "90"))
+ENABLE_SESSION_RETENTION_CLEANUP = env_bool("ENABLE_SESSION_RETENTION_CLEANUP", True)
 COLLECTION_ALERT_FALLBACK_LOOKBACK_DAYS = int(os.getenv("COLLECTION_ALERT_FALLBACK_LOOKBACK_DAYS", "7"))
 LISTING_FRESHNESS_OPTIONAL_UPDATE_DAYS = 14
 LISTING_FRESHNESS_REQUIRED_UPDATE_DAYS = 21

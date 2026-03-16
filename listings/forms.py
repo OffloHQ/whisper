@@ -20,6 +20,10 @@ class ListingForm(forms.ModelForm):
             "stage",
             "property_type",
             "description",
+            "seller_direction_certified",
+            "agent_compliance_acknowledged",
+            "information_accuracy_certified",
+            "private_marketing_certified",
         ]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 4}),
@@ -29,6 +33,18 @@ class ListingForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["property_type"].required = False
         self.fields["description"].required = False
+        self.fields["seller_direction_certified"].label = (
+            "I certify that the seller has directed this sharing approach and that this opportunity is being shared in accordance with that direction."
+        )
+        self.fields["agent_compliance_acknowledged"].label = (
+            "I understand I am responsible for complying with my brokerage, MLS, and local rules."
+        )
+        self.fields["information_accuracy_certified"].label = (
+            "I certify that the information submitted is accurate to the best of my knowledge."
+        )
+        self.fields["private_marketing_certified"].label = (
+            "I certify that the seller has directed that this opportunity be shared privately and not disseminated on the MLS at this time."
+        )
         self.fields["price_min"].widget.attrs["inputmode"] = "decimal"
         self.fields["price_max"].widget.attrs["inputmode"] = "decimal"
 
@@ -43,6 +59,24 @@ class ListingForm(forms.ModelForm):
             return parse_price_input(self.cleaned_data[field_name])
         except ValueError as exc:
             raise forms.ValidationError(str(exc))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        stage = cleaned_data.get("stage")
+
+        if not cleaned_data.get("seller_direction_certified"):
+            self.add_error("seller_direction_certified", "You must certify seller direction before posting.")
+        if not cleaned_data.get("agent_compliance_acknowledged"):
+            self.add_error("agent_compliance_acknowledged", "You must acknowledge compliance responsibility before posting.")
+        if not cleaned_data.get("information_accuracy_certified"):
+            self.add_error(
+                "information_accuracy_certified",
+                "You must certify that the submitted information is accurate before sharing this opportunity.",
+            )
+        if stage == Listing.Stage.PRIVATE and not cleaned_data.get("private_marketing_certified"):
+            self.add_error("private_marketing_certified", "You must certify seller direction for a private listing before posting.")
+
+        return cleaned_data
 
 
 class FeedFilterForm(forms.Form):
@@ -121,7 +155,7 @@ class CollectionAlertSaveForm(FeedFilterForm):
 
 class CollectionAlertSettingsForm(FeedFilterForm):
     name = forms.CharField(max_length=255, label="Collection name")
-    notifications_enabled = forms.BooleanField(required=False, label="Email me when a new post matches")
+    notifications_enabled = forms.BooleanField(required=False, label="Email me when a new opportunity matches")
 
 
 class NotificationPreferencesForm(forms.Form):
@@ -207,3 +241,16 @@ class SignupContactForm(forms.Form):
     phone_number = forms.CharField(label="Phone number", max_length=30)
     brokerage = forms.CharField(label="Brokerage", max_length=255, required=False)
     city = forms.CharField(label="City", max_length=120, required=False)
+
+
+class LegalAcceptanceForm(forms.Form):
+    accept_legal = forms.BooleanField(
+        required=False,
+        label="I agree to the Terms of Use and Privacy Policy.",
+    )
+
+    def clean_accept_legal(self):
+        accepted = self.cleaned_data.get("accept_legal")
+        if not accepted:
+            raise forms.ValidationError("You must agree to the Terms of Use and Privacy Policy to continue.")
+        return accepted

@@ -27,6 +27,14 @@ class AgentUser(models.Model):
     freshness_reminder_emails = models.BooleanField(default=True)
     collection_match_emails = models.BooleanField(default=True)
     product_update_emails = models.BooleanField(default=False)
+    terms_accepted = models.BooleanField(default=False)
+    terms_accepted_at = models.DateTimeField(null=True, blank=True)
+    terms_version = models.CharField(max_length=64, blank=True, default="")
+    privacy_accepted = models.BooleanField(default=False)
+    privacy_accepted_at = models.DateTimeField(null=True, blank=True)
+    privacy_version = models.CharField(max_length=64, blank=True, default="")
+    legal_acceptance_ip = models.GenericIPAddressField(null=True, blank=True)
+    legal_acceptance_user_agent = models.TextField(blank=True, default="")
     signup_status = models.CharField(
         max_length=32,
         choices=SignupStatus.choices,
@@ -79,6 +87,10 @@ class AgentUser(models.Model):
         if self.show_email_to_agents and primary_email and primary_email.is_verified:
             return primary_email.email
         return ""
+
+    @property
+    def has_completed_legal_acceptance(self):
+        return self.terms_accepted and self.privacy_accepted
 
 
 class AccessRequest(models.Model):
@@ -303,6 +315,10 @@ class Listing(models.Model):
     price_min = models.PositiveIntegerField()
     price_max = models.PositiveIntegerField()
     stage = models.CharField(max_length=20, choices=Stage.choices)
+    seller_direction_certified = models.BooleanField(default=False)
+    agent_compliance_acknowledged = models.BooleanField(default=False)
+    information_accuracy_certified = models.BooleanField(default=False)
+    private_marketing_certified = models.BooleanField(default=False)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_confirmed_at = models.DateTimeField(default=timezone.now)

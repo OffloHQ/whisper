@@ -1,5 +1,5 @@
 {% load listing_extras %}
-A new Whisper board posting matches your saved intent.
+A new Whisper opportunity matches your saved intent.
 
 {{ listing.title }}
 {{ listing.city }} | {{ listing.get_stage_display }} | {{ listing.price_min|compact_price }} to {{ listing.price_max|compact_price }}
@@ -9,5 +9,5 @@ Matched collections:
 - {{ collection_name }}
 {% endfor %}
 
-Open the board:
+Open opportunities:
 {{ site_base_url }}/board/

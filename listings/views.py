@@ -38,6 +38,7 @@ from .forms import (
     CollectionForm,
     EmailEntryForm,
     FeedFilterForm,
+    LegalAcceptanceForm,
     ListingForm,
     NotificationPreferencesForm,
     RequestAccessForm,
@@ -65,6 +66,10 @@ DEV_SIGNIN_LINK_SESSION_KEY = "dev_magic_sign_in_link"
 logger = logging.getLogger(__name__)
 FRONT_DOOR_NEUTRAL_TOAST = "If this email is registered, a sign-in link has been sent. Please check your inbox and spam folder."
 DUPLICATE_SIGNUP_MESSAGE = "This email is already registered. Enter it on the sign-in page to get a magic link."
+LEGAL_NOTICE_MESSAGE = (
+    "By continuing, you acknowledge that Whisper is not an MLS, brokerage, or legal compliance service, "
+    "and that licensed professionals remain responsible for complying with brokerage, MLS, licensing, and local law requirements."
+)
 
 def get_active_agent_queryset():
     return AgentUser.objects.filter(is_active=True, deleted_at__isnull=True).order_by("pk")
@@ -114,6 +119,16 @@ def get_current_agent(request=None):
         return get_session_agent(request)
 
     return get_active_agent_queryset().first()
+
+
+def requires_legal_acceptance(agent):
+    if agent is None:
+        return False
+    return not agent.has_completed_legal_acceptance
+
+
+def get_post_auth_redirect(agent):
+    return reverse("feed")
 
 
 def get_pending_signup_agent(request):
@@ -276,7 +291,7 @@ def build_active_filters(request, cleaned_data):
     if request.GET.get("mine") == "on":
         active_filters.append(
             {
-                "label": "My Listings",
+                "label": "My Opportunities",
                 "remove_url": build_remove_filter_url(request, "mine"),
             }
         )
@@ -575,7 +590,8 @@ def get_feed_context(
 
 @never_cache
 def feed(request):
-    if get_session_agent(request) is None:
+    current_agent = get_session_agent(request)
+    if current_agent is None:
         messages.error(request, "Log in to access the Whisper board.")
         return redirect("landing")
     return render(request, "feed.html", get_feed_context(request))
@@ -706,7 +722,7 @@ def consume_auth_access_token(request, token):
         auth_access_token.mark_used()
     set_current_agent(request, auth_access_token.agent)
     messages.success(request, "Signed in to Whisper.")
-    return redirect("feed")
+    return redirect(get_post_auth_redirect(auth_access_token.agent))
 
 
 @never_cache
@@ -729,7 +745,7 @@ def qr_sign_in_status(request, token):
 
     set_current_agent(request, auth_access_token.agent)
     auth_access_token.mark_desktop_authenticated()
-    return JsonResponse({"status": "authenticated", "redirect_url": reverse("feed")})
+    return JsonResponse({"status": "authenticated", "redirect_url": get_post_auth_redirect(auth_access_token.agent)})
 
 
 def update_access_request_verification_fields(access_request, result, *, full_name):
@@ -1031,8 +1047,8 @@ def signup_contact(request):
             access_request.save(update_fields=["status", "decision_status", "completed_at", "updated_at"])
             clear_pending_signup(request)
             set_current_agent(request, agent)
-            messages.success(request, "Signup complete. Welcome to Whisper.")
-            return redirect("feed")
+            messages.success(request, "Signup complete. Review the Terms of Use and Privacy Policy to continue.")
+            return redirect("legal_acceptance")
     else:
         initial = {
             "brokerage": agent.brokerage,
@@ -1050,6 +1066,65 @@ def signup_contact(request):
             "signup_email": agent.email,
         },
     )
+
+
+@never_cache
+def legal_acceptance(request):
+    current_agent = get_session_agent(request)
+    if current_agent is None:
+        messages.error(request, "Log in to continue.")
+        return redirect("landing")
+    if current_agent.signup_status != AgentUser.SignupStatus.ACTIVE:
+        messages.error(request, "Finish signup before continuing.")
+        return redirect("request_access")
+    if current_agent.has_completed_legal_acceptance:
+        return redirect("feed")
+
+    if request.method == "POST":
+        form = LegalAcceptanceForm(request.POST)
+        if form.is_valid():
+            accepted_at = timezone.now()
+            current_agent.terms_accepted = True
+            current_agent.terms_accepted_at = accepted_at
+            current_agent.terms_version = settings.WHISPER_TERMS_VERSION
+            current_agent.privacy_accepted = True
+            current_agent.privacy_accepted_at = accepted_at
+            current_agent.privacy_version = settings.WHISPER_PRIVACY_VERSION
+            current_agent.legal_acceptance_ip = request.META.get("REMOTE_ADDR") or None
+            current_agent.legal_acceptance_user_agent = request.META.get("HTTP_USER_AGENT", "")
+            current_agent.save(
+                update_fields=[
+                    "terms_accepted",
+                    "terms_accepted_at",
+                    "terms_version",
+                    "privacy_accepted",
+                    "privacy_accepted_at",
+                    "privacy_version",
+                    "legal_acceptance_ip",
+                    "legal_acceptance_user_agent",
+                ]
+            )
+            messages.success(request, "Welcome to Whisper.")
+            return redirect("feed")
+    else:
+        form = LegalAcceptanceForm()
+
+    return render(
+        request,
+        "legal_acceptance.html",
+        {
+            "form": form,
+            "legal_notice_message": LEGAL_NOTICE_MESSAGE,
+        },
+    )
+
+
+def terms_of_use(request):
+    return render(request, "terms_of_use.html")
+
+
+def privacy_policy(request):
+    return render(request, "privacy_policy.html")
 
 
 def account(request):
@@ -1395,7 +1470,7 @@ def add_saved_listing_to_collection(request, listing_id):
 
     saved_listing = SavedListing.objects.filter(agent=agent, listing_id=listing_id).select_related("listing").first()
     if saved_listing is None:
-        messages.error(request, "That saved listing is no longer available in your workspace.")
+        messages.error(request, "That saved opportunity is no longer available in your workspace.")
         return redirect(redirect_target)
 
     form = AssignSavedListingForm(request.POST, agent=agent, prefix=f"saved-{listing_id}")
@@ -1438,8 +1513,8 @@ def render_post_listing(request, form, template_name, show_listing_form=False):
             "form": form,
             "post_form_action": "/post/?source=feed",
             "form_action": request.path,
-            "page_title": "Post a Listing",
-            "submit_label": "Submit Listing",
+            "page_title": "Share an Opportunity",
+            "submit_label": "Share Opportunity",
             "show_listing_form": show_listing_form,
         },
     )
@@ -1455,7 +1530,7 @@ def post_listing(request):
             if agent is None:
                 messages.error(
                     request,
-                    "We can't post this listing yet because no agent account is available. Please add an agent and try again.",
+                    "We can't share this opportunity yet because no agent account is available. Please add an agent and try again.",
                 )
                 return render_post_listing(
                     request,
@@ -1464,7 +1539,7 @@ def post_listing(request):
                     show_listing_form=template_name == "feed.html",
                 )
             if not agent.phones.exists():
-                messages.error(request, "Add a phone number to your account before posting listings.")
+                messages.error(request, "Add a phone number to your account before sharing opportunities.")
                 return redirect(f'{reverse("account")}#contact-settings')
 
             listing = form.save(commit=False)
@@ -1495,7 +1570,7 @@ def edit_listing(request, listing_id):
     listing = Listing.objects.filter(pk=listing_id).select_related("agent").first()
 
     if current_agent is None or listing is None or listing.agent_id != current_agent.id:
-        messages.error(request, "Only the listing owner can edit this post.")
+        messages.error(request, "Only the opportunity owner can edit this post.")
         return redirect(redirect_target)
 
     if request.method == "POST":
@@ -1511,7 +1586,7 @@ def edit_listing(request, listing_id):
             updated_listing.save()
             if updated_listing.is_active:
                 send_collection_match_alerts_for_listing(updated_listing)
-            messages.success(request, "Listing updated")
+            messages.success(request, "Opportunity updated")
             return redirect(redirect_target)
     else:
         form = ListingForm(instance=listing)
@@ -1522,7 +1597,7 @@ def edit_listing(request, listing_id):
         {
             "form": form,
             "form_action": request.path,
-            "page_title": "Edit Listing",
+            "page_title": "Edit Opportunity",
             "submit_label": "Save Changes",
             "show_listing_form": False,
         },
@@ -1538,11 +1613,11 @@ def remove_listing(request, listing_id):
     listing = Listing.objects.filter(pk=listing_id).select_related("agent").first()
 
     if current_agent is None or listing is None or listing.agent_id != current_agent.id:
-        messages.error(request, "Only the listing owner can remove this post.")
+        messages.error(request, "Only the opportunity owner can remove this post.")
         return redirect(redirect_target)
 
     listing.mark_removed_by_agent()
-    messages.success(request, "Listing removed")
+    messages.success(request, "Opportunity removed")
     return redirect(redirect_target)
 
 
@@ -1553,7 +1628,7 @@ def confirm_listing_from_email(request, token):
         return render(
             request,
             "listing_checkin_result.html",
-            {"message": "This listing confirmation link is invalid or has expired."},
+            {"message": "This opportunity confirmation link is invalid or has expired."},
             status=400,
         )
 
@@ -1562,7 +1637,7 @@ def confirm_listing_from_email(request, token):
         return render(
             request,
             "listing_checkin_result.html",
-            {"message": "This listing could not be found."},
+            {"message": "This opportunity could not be found."},
             status=404,
         )
 
@@ -1573,7 +1648,7 @@ def confirm_listing_from_email(request, token):
     return render(
         request,
         "listing_checkin_result.html",
-        {"message": "Thanks! Your listing has been confirmed."},
+        {"message": "Thanks! Your opportunity has been confirmed."},
     )
 
 
@@ -1584,7 +1659,7 @@ def remove_listing_from_email(request, token):
         return render(
             request,
             "listing_checkin_result.html",
-            {"message": "This listing removal link is invalid or has expired."},
+            {"message": "This opportunity removal link is invalid or has expired."},
             status=400,
         )
 
@@ -1593,7 +1668,7 @@ def remove_listing_from_email(request, token):
         return render(
             request,
             "listing_checkin_result.html",
-            {"message": "This listing could not be found."},
+            {"message": "This opportunity could not be found."},
             status=404,
         )
 
@@ -1601,7 +1676,7 @@ def remove_listing_from_email(request, token):
     return render(
         request,
         "listing_checkin_result.html",
-        {"message": "Your listing has been removed."},
+        {"message": "Your opportunity has been removed."},
     )
 
 
@@ -1680,13 +1755,13 @@ def toggle_saved_listing(request, listing_id):
     if agent is None:
         messages.error(
             request,
-            "We can't save this listing yet because no agent account is available. Please add an agent and try again.",
+            "We can't save this opportunity yet because no agent account is available. Please add an agent and try again.",
         )
         return redirect(redirect_target)
 
     listing = Listing.objects.filter(pk=listing_id, is_active=True).first()
     if listing is None:
-        messages.error(request, "That listing is no longer available.")
+        messages.error(request, "That opportunity is no longer available.")
         return redirect(redirect_target)
 
     saved_listing, created = SavedListing.objects.get_or_create(
@@ -1737,13 +1812,13 @@ def confirm_listing_availability(request, listing_id):
     if agent is None:
         messages.error(
             request,
-            "We can't confirm this listing yet because no agent account is available. Please add an agent and try again.",
+            "We can't confirm this opportunity yet because no agent account is available. Please add an agent and try again.",
         )
         return redirect(redirect_target)
 
     listing = Listing.objects.filter(pk=listing_id, agent=agent, is_active=True).first()
     if listing is None:
-        messages.error(request, "Only the listing owner can confirm availability.")
+        messages.error(request, "Only the opportunity owner can confirm availability.")
         return redirect(redirect_target)
 
     listing.mark_confirmed()

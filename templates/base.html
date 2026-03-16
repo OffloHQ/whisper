@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Whisper Listings{% endblock %}</title>
+    <title>{% block title %}Whisper Opportunities{% endblock %}</title>
     <style>
         :root {
             --page-bg: linear-gradient(180deg, #f7f4ee 0%, #f0ece3 100%);
@@ -346,7 +346,7 @@
             </div>
             <div class="nav-links">
                 <a class="desktop-nav-link" href="{% url 'feed' %}">Feed</a>
-                <a class="button-link desktop-nav-link" href="{% url 'post_listing' %}">Post Listing</a>
+                <a class="button-link desktop-nav-link" href="{% url 'post_listing' %}">Share Opportunity</a>
                 <a href="{% url 'notifications' %}" class="mobile-account-entry" aria-label="Open notifications" style="position:relative;">
                     <span class="mobile-account-avatar">{{ current_agent_initials|default:"WW" }}</span>
                     {% if unread_notification_count %}

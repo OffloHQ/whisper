@@ -70,7 +70,7 @@ def build_account_verification_email(*, agent_name, verification_url):
 
 def build_listing_checkin_group_email(*, agent_name, listings):
     product_name = getattr(settings, "PRODUCT_NAME", "Whisper")
-    subject = f"{product_name} Listing Check-In"
+    subject = f"{product_name} Opportunity Check-In"
     html_body, text_body = render_email(
         html_template="emails/listings/checkin_group.html",
         text_template="emails/listings/checkin_group.txt",
@@ -100,9 +100,9 @@ def build_magic_sign_in_email(*, sign_in_url):
 def build_collection_match_alert_email(*, agent_name, listing, collection_names):
     product_name = getattr(settings, "PRODUCT_NAME", "Whisper")
     if len(collection_names) == 1:
-        subject = f"{product_name} — New Board Posting matches {collection_names[0]}"
+        subject = f"{product_name} — New Opportunity matches {collection_names[0]}"
     else:
-        subject = f"{product_name} — New Board Posting matches {len(collection_names)} collection alerts"
+        subject = f"{product_name} — New Opportunity matches {len(collection_names)} collection alerts"
     html_body, text_body = render_email(
         html_template="emails/collections/match_alert.html",
         text_template="emails/collections/match_alert.txt",

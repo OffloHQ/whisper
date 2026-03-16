@@ -1,6 +1,6 @@
 <p>Hi {{ agent_name }},</p>
 <p>Just a quick Whisper check-in.</p>
-<p>Are these listings still available?</p>
+<p>Are these opportunities still active?</p>
 {% for listing in listings %}
 <p>
     <strong>{{ listing.descriptor }}</strong><br>
@@ -13,6 +13,6 @@
     {% endif %}
     <br>
     <a href="{{ listing.confirm_url }}">{{ listing.primary_action_label }}</a> |
-    <a href="{{ listing.remove_url }}">NO remove listing</a>
+    <a href="{{ listing.remove_url }}">NO remove opportunity</a>
 </p>
 {% endfor %}

@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Before You Continue | Whisper{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.access-gate-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.access-gate-card {
+    width: 100%;
+    max-width: 34rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo {
+    width: 92px;
+    height: auto;
+    display: block;
+    margin: 0 auto 1.25rem;
+}
+
+.access-card {
+    width: 100%;
+    max-width: 100%;
+    text-align: left;
+    overflow-x: hidden;
+}
+
+.access-step {
+    color: var(--muted);
+    font-size: 0.83rem;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.45rem;
+    text-transform: uppercase;
+}
+
+.access-card h1 {
+    font-size: 1.65rem;
+    line-height: 1.15;
+    margin: 0 0 0.5rem;
+}
+
+.access-subtitle {
+    color: var(--muted);
+    margin: 0 0 1rem;
+}
+
+.legal-notice {
+    margin: 0 0 1rem;
+    padding: 0.95rem 1rem;
+    border-radius: 14px;
+    background: rgba(31, 26, 20, 0.05);
+    border: 1px solid rgba(31, 26, 20, 0.08);
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.access-gate-form {
+    display: grid;
+    gap: 1rem;
+    width: 100%;
+    max-width: 100%;
+}
+
+.access-gate-form button {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 999px;
+    border: none;
+    background: #1f1a14;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.legal-check {
+    width: 100%;
+    display: block;
+}
+
+.legal-checkbox {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: start;
+}
+
+.legal-checkbox input[type="checkbox"] {
+    margin: 0.2rem 0 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    justify-self: start;
+}
+
+.legal-text {
+    min-width: 0;
+    width: 100%;
+    display: block;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.legal-text a {
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.field-errors {
+    margin-top: 0.55rem;
+    color: #7c2d12;
+    font-size: 0.92rem;
+}
+
+.card {
+    border-radius: 18px;
+    border: 1px solid rgba(31, 26, 20, 0.08);
+    box-shadow: 0 10px 22px rgba(31, 26, 20, 0.06);
+}
+
+@media (max-width: 640px) {
+    .access-gate-shell {
+        padding: 1.5rem 1rem;
+        align-items: flex-start;
+    }
+
+    .logo {
+        width: 84px;
+        margin-bottom: 1rem;
+    }
+
+    .access-card h1 {
+        font-size: 1.45rem;
+    }
+
+    .legal-checkbox {
+        grid-template-columns: 1.25rem minmax(0, 1fr);
+        column-gap: 0.65rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="access-gate-shell">
+    <div class="access-gate-card">
+        <img src="{% static 'whisper/images/logo.svg' %}" alt="Whisper logo" class="logo">
+
+        <section class="card access-card">
+            <p class="access-step">Final Step</p>
+            <h1>Before you continue</h1>
+
+            <p class="access-subtitle">
+                Review and accept Whisper’s Terms of Use and Privacy Policy before entering Whisper.
+            </p>
+
+            <p class="legal-notice">
+                By continuing, you acknowledge that Whisper is a credentialed professional
+                opportunity network and not an MLS, brokerage, or legal compliance service.
+                You remain responsible for complying with your brokerage policies, MLS rules,
+                licensing obligations, and applicable law.
+            </p>
+
+            <form method="post" class="access-gate-form">
+                {% csrf_token %}
+
+                <div class="legal-check">
+                    <label class="legal-checkbox" for="{{ form.accept_legal.id_for_label }}">
+                        {{ form.accept_legal }}
+                        <span class="legal-text">
+                            I agree to the
+                            <a href="{% url 'terms_of_use' %}" target="_blank" rel="noopener noreferrer">Terms of Use</a>
+                            and
+                            <a href="{% url 'privacy_policy' %}" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+                        </span>
+                    </label>
+
+                    {% if form.accept_legal.errors %}
+                        <div class="field-errors">{{ form.accept_legal.errors|striptags }}</div>
+                    {% endif %}
+                </div>
+
+                <button type="submit">Accept and Enter Whisper</button>
+            </form>
+        </section>
+    </div>
+</section>
+{% endblock %}

@@ -365,7 +365,7 @@
 <section class="workspace-shell">
     <div class="workspace-header">
         <h1>Workspace</h1>
-        <p class="muted">Organize saved opportunities, collections, and your own listing inventory.</p>
+        <p class="muted">Organize saved opportunities, collections, and your own shared opportunities.</p>
     </div>
 
     <nav class="workspace-tabs" aria-label="Workspace sections">
@@ -425,7 +425,7 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <p class="muted">No saved listings waiting in Workspace.</p>
+                <p class="muted">No saved opportunities waiting in Workspace.</p>
             {% endif %}
         </section>
     {% else %}
@@ -453,7 +453,7 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <p class="muted">You have not posted any listings yet.</p>
+                <p class="muted">You have not shared any opportunities yet.</p>
             {% endif %}
         </section>
     {% endif %}

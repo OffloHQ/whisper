@@ -1,6 +1,56 @@
-<form method="post" action="{{ form_action|default:'' }}" class="listing-form">
+<style>
+    .listing-form {
+        display: grid;
+        gap: 1rem;
+    }
+    .listing-form .form-row {
+        display: grid;
+        gap: 0.45rem;
+    }
+    .listing-form .field-errors {
+        color: #7c2d12;
+        font-size: 0.92rem;
+    }
+    .certification-section {
+        display: grid;
+        gap: 0.85rem;
+        padding: 1rem;
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 16px;
+        background: rgba(31, 26, 20, 0.03);
+    }
+    .certification-section h3 {
+        margin: 0;
+        font-size: 1rem;
+    }
+    .certification-section p {
+        margin: 0;
+    }
+    .certification-check {
+        display: grid;
+        gap: 0.45rem;
+    }
+    .certification-check label {
+        display: flex;
+        align-items: start;
+        gap: 0.65rem;
+        line-height: 1.4;
+    }
+    .certification-check input[type="checkbox"] {
+        margin-top: 0.18rem;
+    }
+    [hidden] {
+        display: none !important;
+    }
+</style>
+
+<form method="post" action="{{ form_action|default:'' }}" class="listing-form" data-listing-form>
     {% csrf_token %}
+    {% if form.non_field_errors %}
+        <div class="field-errors">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
     {% for field in form %}
+        {% if field.name != "seller_direction_certified" and field.name != "agent_compliance_acknowledged" and field.name != "information_accuracy_certified" and field.name != "private_marketing_certified" %}
         <div class="form-row">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
@@ -8,6 +58,121 @@
                 <div class="field-errors">{{ field.errors|striptags }}</div>
             {% endif %}
         </div>
+        {% endif %}
     {% endfor %}
-    <button type="submit">{{ submit_label|default:"Submit Listing" }}</button>
+    <section class="certification-section" aria-labelledby="listing-certifications-title">
+        <div>
+            <h3 id="listing-certifications-title">Certifications</h3>
+            <p class="muted">Required before this opportunity can go live.</p>
+        </div>
+        <div class="certification-check">
+            <label for="{{ form.seller_direction_certified.id_for_label }}">
+                {{ form.seller_direction_certified }}
+                <span>{{ form.seller_direction_certified.label }}</span>
+            </label>
+            <div class="field-errors" data-certification-error-for="seller_direction_certified">
+                {% if form.seller_direction_certified.errors %}{{ form.seller_direction_certified.errors|striptags }}{% endif %}
+            </div>
+        </div>
+        <div class="certification-check">
+            <label for="{{ form.agent_compliance_acknowledged.id_for_label }}">
+                {{ form.agent_compliance_acknowledged }}
+                <span>{{ form.agent_compliance_acknowledged.label }}</span>
+            </label>
+            <div class="field-errors" data-certification-error-for="agent_compliance_acknowledged">
+                {% if form.agent_compliance_acknowledged.errors %}{{ form.agent_compliance_acknowledged.errors|striptags }}{% endif %}
+            </div>
+        </div>
+        <div class="certification-check">
+            <label for="{{ form.information_accuracy_certified.id_for_label }}">
+                {{ form.information_accuracy_certified }}
+                <span>{{ form.information_accuracy_certified.label }}</span>
+            </label>
+            <div class="field-errors" data-certification-error-for="information_accuracy_certified">
+                {% if form.information_accuracy_certified.errors %}{{ form.information_accuracy_certified.errors|striptags }}{% endif %}
+            </div>
+        </div>
+        <div class="certification-check" data-private-certification {% if form.stage.value != "private" %}hidden{% endif %}>
+            <label for="{{ form.private_marketing_certified.id_for_label }}">
+                {{ form.private_marketing_certified }}
+                <span>{{ form.private_marketing_certified.label }}</span>
+            </label>
+            <div class="field-errors" data-certification-error-for="private_marketing_certified">
+                {% if form.private_marketing_certified.errors %}{{ form.private_marketing_certified.errors|striptags }}{% endif %}
+            </div>
+        </div>
+    </section>
+    <button type="submit">{{ submit_label|default:"Share Opportunity" }}</button>
 </form>
+
+<script>
+    (function () {
+        const form = document.querySelector("[data-listing-form]");
+        if (!form) {
+            return;
+        }
+
+        const stageField = document.getElementById("{{ form.stage.id_for_label }}");
+        const privateCertificationRow = form.querySelector("[data-private-certification]");
+        const sellerDirectionField = document.getElementById("{{ form.seller_direction_certified.id_for_label }}");
+        const agentAcknowledgementField = document.getElementById("{{ form.agent_compliance_acknowledged.id_for_label }}");
+        const informationAccuracyField = document.getElementById("{{ form.information_accuracy_certified.id_for_label }}");
+        const privateCertificationField = document.getElementById("{{ form.private_marketing_certified.id_for_label }}");
+
+        const setError = function (fieldName, message) {
+            const errorNode = form.querySelector('[data-certification-error-for="' + fieldName + '"]');
+            if (errorNode) {
+                errorNode.textContent = message;
+            }
+        };
+
+        const clearError = function (fieldName) {
+            setError(fieldName, "");
+        };
+
+        const togglePrivateCertification = function () {
+            if (!stageField || !privateCertificationRow) {
+                return;
+            }
+            const isPrivate = stageField.value === "private";
+            privateCertificationRow.hidden = !isPrivate;
+            if (!isPrivate) {
+                clearError("private_marketing_certified");
+            }
+        };
+
+        if (stageField) {
+            stageField.addEventListener("change", togglePrivateCertification);
+            togglePrivateCertification();
+        }
+
+        form.addEventListener("submit", function (event) {
+            let hasErrors = false;
+            clearError("seller_direction_certified");
+            clearError("agent_compliance_acknowledged");
+            clearError("information_accuracy_certified");
+            clearError("private_marketing_certified");
+
+            if (sellerDirectionField && !sellerDirectionField.checked) {
+                setError("seller_direction_certified", "You must certify seller direction before posting.");
+                hasErrors = true;
+            }
+            if (agentAcknowledgementField && !agentAcknowledgementField.checked) {
+                setError("agent_compliance_acknowledged", "You must acknowledge compliance responsibility before posting.");
+                hasErrors = true;
+            }
+            if (informationAccuracyField && !informationAccuracyField.checked) {
+                setError("information_accuracy_certified", "You must certify that the submitted information is accurate before sharing this opportunity.");
+                hasErrors = true;
+            }
+            if (stageField && stageField.value === "private" && privateCertificationField && !privateCertificationField.checked) {
+                setError("private_marketing_certified", "You must certify seller direction for a private listing before posting.");
+                hasErrors = true;
+            }
+
+            if (hasErrors) {
+                event.preventDefault();
+            }
+        });
+    }());
+</script>

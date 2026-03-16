@@ -237,7 +237,7 @@
                 </div>
                 <label style="display:flex; gap:0.65rem; align-items:center;">
                     {{ collection_alert_form.notifications_enabled }}
-                    <span>Email me when a new post matches</span>
+                    <span>Email me when a new opportunity matches</span>
                 </label>
                 <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
                     <button type="submit">Save Alert Settings</button>
@@ -249,7 +249,7 @@
 </section>
 
 <section class="card" style="display:grid; gap:1rem; margin-top:1rem;">
-    <h2 style="margin:0;">Listings</h2>
+    <h2 style="margin:0;">Opportunities</h2>
     {% if collection_items %}
         <div style="display:grid; gap:0.85rem;">
             {% for item in collection_items %}
@@ -262,7 +262,7 @@
             {% endfor %}
         </div>
     {% else %}
-        <p class="muted" style="margin:0;">No listings have been added to this collection yet.</p>
+        <p class="muted" style="margin:0;">No opportunities have been added to this collection yet.</p>
     {% endif %}
 </section>
 </div>

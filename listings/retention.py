@@ -1,3 +1,10 @@
+"""
+Retention selectors for low-risk cleanup only.
+
+V1 intentionally excludes legal- and compliance-sensitive rows such as AgentUser,
+Listing, and reviewed/moderated AccessRequest history.
+"""
+
 from datetime import timedelta
 
 from django.conf import settings
@@ -5,6 +12,15 @@ from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from .models import AccessRequest, AgentUser, AuthAccessToken
+
+
+APPROVED_CLEANUP_KEYS = (
+    "auth_tokens.qr_expired",
+    "auth_tokens.qr_used",
+    "auth_tokens.non_qr",
+    "access_requests.pending_or_waitlist",
+    "access_requests.rejected",
+)
 
 
 def get_auth_token_cleanup_querysets(*, now=None):
@@ -38,9 +54,13 @@ def get_access_request_cleanup_querysets(*, now=None):
     stale_cutoff = now - timedelta(days=settings.ACCESS_REQUEST_RETENTION_DAYS)
     rejected_cutoff = now - timedelta(days=settings.REJECTED_ACCESS_REQUEST_RETENTION_DAYS)
 
+    # AccessRequest does not have a direct FK to AgentUser, so the safest current
+    # protection is to exclude any onboarding row whose email now belongs to an
+    # account. This is intentionally conservative for V1.
     related_agent = AgentUser.objects.filter(email=OuterRef("email"))
     base_queryset = AccessRequest.objects.annotate(has_agent=Exists(related_agent)).filter(
         completed_at__isnull=True,
+        reviewed_at__isnull=True,
         has_agent=False,
     )
 
@@ -64,7 +84,15 @@ def get_access_request_cleanup_querysets(*, now=None):
 
 def get_cleanup_querysets(*, now=None):
     now = now or timezone.now()
-    querysets = {}
-    querysets.update(get_auth_token_cleanup_querysets(now=now))
-    querysets.update(get_access_request_cleanup_querysets(now=now))
-    return querysets
+    auth_querysets = get_auth_token_cleanup_querysets(now=now)
+    access_request_querysets = get_access_request_cleanup_querysets(now=now)
+
+    # Deny by default: V1 cleanup categories are explicitly enumerated here so new
+    # deletion targets are not activated accidentally by a helper change.
+    return {
+        "auth_tokens.qr_expired": auth_querysets["auth_tokens.qr_expired"],
+        "auth_tokens.qr_used": auth_querysets["auth_tokens.qr_used"],
+        "auth_tokens.non_qr": auth_querysets["auth_tokens.non_qr"],
+        "access_requests.pending_or_waitlist": access_request_querysets["access_requests.pending_or_waitlist"],
+        "access_requests.rejected": access_request_querysets["access_requests.rejected"],
+    }

@@ -1,9 +1,9 @@
 {% load listing_extras %}
-<p>A new Whisper board posting matches your saved intent.</p>
+<p>A new Whisper opportunity matches your saved intent.</p>
 <p><strong>{{ listing.title }}</strong><br>{{ listing.city }} · {{ listing.get_stage_display }} · {{ listing.price_min|compact_price }} to {{ listing.price_max|compact_price }}</p>
 <p>Matched collections:
 {% for collection_name in collection_names %}
 <br>{{ collection_name }}
 {% endfor %}
 </p>
-<p><a href="{{ site_base_url }}/board/">Open the board</a></p>
+<p><a href="{{ site_base_url }}/board/">Open opportunities</a></p>

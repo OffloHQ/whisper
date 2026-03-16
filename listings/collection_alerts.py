@@ -108,7 +108,7 @@ def send_collection_match_alerts_for_listing(listing):
                 InAppNotification(
                     agent=agent,
                     notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
-                    title=f"New board posting matches {collection.name}",
+                    title=f"New opportunity matches {collection.name}",
                     body=f"{listing.title} matches your saved collection alert.",
                     collection=collection,
                     listing=listing,

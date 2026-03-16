@@ -43,6 +43,12 @@ from .views import CURRENT_AGENT_LOCKED_OUT_KEY, CURRENT_AGENT_SESSION_KEY
 
 
 def create_agent(*, phone_number="914-555-0101", **kwargs):
+    kwargs.setdefault("terms_accepted", True)
+    kwargs.setdefault("privacy_accepted", True)
+    kwargs.setdefault("terms_accepted_at", timezone.now())
+    kwargs.setdefault("privacy_accepted_at", timezone.now())
+    kwargs.setdefault("terms_version", "test-terms-v1")
+    kwargs.setdefault("privacy_version", "test-privacy-v1")
     agent = AgentUser.objects.create(**kwargs)
     if phone_number:
         AgentPhone.objects.create(agent=agent, phone_number=phone_number)
@@ -122,6 +128,9 @@ class PostListingViewTests(TestCase):
             "price_max": 950000,
             "stage": Listing.Stage.PREMARKET,
             "description": "Quiet block with finished basement.",
+            "seller_direction_certified": "on",
+            "agent_compliance_acknowledged": "on",
+            "information_accuracy_certified": "on",
         }
 
     def test_post_listing_assigns_first_agent_and_redirects_to_feed(self):
@@ -162,6 +171,7 @@ class PostListingViewTests(TestCase):
         self.assertContains(response, "name=\"city\"")
         self.assertContains(response, "name=\"stage\"")
         self.assertContains(response, "Town / Area")
+        self.assertContains(response, "Share Opportunity")
 
     def test_post_listing_page_uses_controlled_town_area_choices(self):
         response = self.client.get(reverse("post_listing"))
@@ -182,6 +192,93 @@ class PostListingViewTests(TestCase):
 
         self.assertRedirects(response, reverse("account") + "#contact-settings", fetch_redirect_response=False)
         self.assertEqual(Listing.objects.count(), 0)
+
+    def test_premarket_listing_fails_without_seller_direction_certification(self):
+        agent = create_agent(
+            name="Premarket Seller Cert Agent",
+            email="premarket-seller-cert@example.com",
+            license_number="LIC-PRE-SELLER",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload.pop("seller_direction_certified")
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You must certify seller direction before posting.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_premarket_listing_fails_without_agent_acknowledgment(self):
+        agent = create_agent(
+            name="Premarket Compliance Agent",
+            email="premarket-compliance@example.com",
+            license_number="LIC-PRE-COMPLIANCE",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload.pop("agent_compliance_acknowledged")
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You must acknowledge compliance responsibility before posting.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_premarket_listing_fails_without_accuracy_certification(self):
+        agent = create_agent(
+            name="Premarket Accuracy Agent",
+            email="premarket-accuracy@example.com",
+            license_number="LIC-PRE-ACCURACY",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload.pop("information_accuracy_certified")
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "You must certify that the submitted information is accurate before sharing this opportunity.",
+        )
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_private_listing_fails_without_private_certification(self):
+        agent = create_agent(
+            name="Private Cert Agent",
+            email="private-cert@example.com",
+            license_number="LIC-PRIVATE-CERT",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["stage"] = Listing.Stage.PRIVATE
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You must certify seller direction for a private listing before posting.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_private_listing_succeeds_with_all_required_certifications(self):
+        agent = create_agent(
+            name="Private Success Agent",
+            email="private-success@example.com",
+            license_number="LIC-PRIVATE-SUCCESS",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["stage"] = Listing.Stage.PRIVATE
+        payload["private_marketing_certified"] = "on"
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertRedirects(response, reverse("feed"))
+        listing = Listing.objects.get(agent=agent)
+        self.assertTrue(listing.seller_direction_certified)
+        self.assertTrue(listing.agent_compliance_acknowledged)
+        self.assertTrue(listing.information_accuracy_certified)
+        self.assertTrue(listing.private_marketing_certified)
 
 
 class ListingPhoneValidationTests(TestCase):
@@ -457,8 +554,8 @@ class AccessFlowTests(TestCase):
             follow=True,
         )
 
-        self.assertRedirects(contact_response, reverse("feed"))
-        self.assertContains(contact_response, "Signup complete. Welcome to Whisper.")
+        self.assertRedirects(contact_response, reverse("legal_acceptance"))
+        self.assertContains(contact_response, "Signup complete. Review the Terms of Use and Privacy Policy to continue.")
         agent = AgentUser.objects.get(email="signup@example.com")
         access_request.refresh_from_db()
         self.assertTrue(agent.is_active)
@@ -497,12 +594,88 @@ class AccessFlowTests(TestCase):
             follow=True,
         )
 
-        self.assertRedirects(response, reverse("feed"))
-        self.assertContains(response, "Signup complete. Welcome to Whisper.")
+        self.assertRedirects(response, reverse("legal_acceptance"))
+        self.assertContains(response, "Signup complete. Review the Terms of Use and Privacy Policy to continue.")
         agent = AgentUser.objects.get(email="minimal@example.com")
         self.assertEqual(agent.brokerage, "")
         self.assertEqual(agent.city, "")
         self.assertEqual(agent.primary_phone.phone_number, "914-555-9090")
+
+    @override_settings(WHISPER_TERMS_VERSION="2026-03-v1", WHISPER_PRIVACY_VERSION="2026-03-v1")
+    def test_legal_acceptance_requires_checkbox_and_stores_acceptance(self):
+        agent = create_agent(
+            name="Legal Pending Agent",
+            email="legal-pending@example.com",
+            license_number="LIC-LEGAL-PENDING",
+            is_verified=True,
+            signup_status=AgentUser.SignupStatus.ACTIVE,
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        login_agent(self.client, agent)
+
+        invalid_response = self.client.post(reverse("legal_acceptance"), {}, follow=True)
+
+        self.assertEqual(invalid_response.status_code, 200)
+        self.assertContains(invalid_response, "You must agree to the Terms of Use and Privacy Policy to continue.")
+
+        valid_response = self.client.post(
+            reverse("legal_acceptance"),
+            {"accept_legal": "on"},
+            follow=True,
+            HTTP_USER_AGENT="WhisperBrowser/1.0",
+            REMOTE_ADDR="203.0.113.10",
+        )
+
+        self.assertRedirects(valid_response, reverse("feed"))
+        agent.refresh_from_db()
+        self.assertTrue(agent.terms_accepted)
+        self.assertTrue(agent.privacy_accepted)
+        self.assertIsNotNone(agent.terms_accepted_at)
+        self.assertIsNotNone(agent.privacy_accepted_at)
+        self.assertEqual(agent.terms_version, "2026-03-v1")
+        self.assertEqual(agent.privacy_version, "2026-03-v1")
+        self.assertEqual(agent.legal_acceptance_ip, "203.0.113.10")
+        self.assertEqual(agent.legal_acceptance_user_agent, "WhisperBrowser/1.0")
+
+    def test_legal_acceptance_page_contains_terms_and_privacy_links(self):
+        agent = create_agent(
+            name="Legal Links Agent",
+            email="legal-links@example.com",
+            license_number="LIC-LEGAL-LINKS",
+            is_verified=True,
+            signup_status=AgentUser.SignupStatus.ACTIVE,
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        login_agent(self.client, agent)
+
+        response = self.client.get(reverse("legal_acceptance"))
+
+        self.assertContains(response, reverse("terms_of_use"))
+        self.assertContains(response, reverse("privacy_policy"))
+        self.assertContains(response, "Whisper is not an MLS")
+
+    def test_terms_and_privacy_pages_resolve(self):
+        terms_response = self.client.get(reverse("terms_of_use"))
+        privacy_response = self.client.get(reverse("privacy_policy"))
+
+        self.assertContains(terms_response, "Whisper Terms of Use")
+        self.assertContains(terms_response, "Effective Date:")
+        self.assertContains(terms_response, "not a Multiple Listing Service")
+        self.assertContains(terms_response, "Information Accuracy Disclaimer")
+        self.assertContains(privacy_response, "Whisper Privacy Policy")
+        self.assertContains(privacy_response, "Effective Date:")
+        self.assertContains(privacy_response, "authentication events")
+        self.assertContains(privacy_response, "legal acceptance")
 
 
 class FrontDoorMagicLinkTests(TestCase):
@@ -640,6 +813,32 @@ class FrontDoorMagicLinkTests(TestCase):
         session = self.client.session
         self.assertEqual(session[CURRENT_AGENT_SESSION_KEY], agent.id)
 
+    def test_qr_status_redirects_to_legal_step_when_acceptance_incomplete(self):
+        agent = create_agent(
+            name="Desktop QR Legal Agent",
+            email="desktop-qr-legal@example.com",
+            license_number="LIC-DESKTOP-QR-LEGAL",
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        token = AuthAccessToken.objects.create(
+            agent=agent,
+            email=agent.email,
+            delivery_method=AuthAccessToken.DeliveryMethod.QR,
+            expires_at=timezone.now() + timedelta(minutes=10),
+            completed_at=timezone.now(),
+            used_at=timezone.now(),
+        )
+
+        response = self.client.get(reverse("qr_sign_in_status", args=[token.token]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["redirect_url"], reverse("feed"))
+
 
 @override_settings(
     AUTH_TOKEN_RETENTION_DAYS=14,
@@ -676,6 +875,20 @@ class RetentionCleanupTests(TestCase):
         self.assertIn(stale_qr, cleanup_targets["auth_tokens.qr_expired"])
         self.assertNotIn(fresh_qr, cleanup_targets["auth_tokens.qr_expired"])
 
+    def test_cleanup_keys_match_approved_v1_categories(self):
+        cleanup_targets = get_cleanup_querysets()
+
+        self.assertEqual(
+            tuple(cleanup_targets.keys()),
+            (
+                "auth_tokens.qr_expired",
+                "auth_tokens.qr_used",
+                "auth_tokens.non_qr",
+                "access_requests.pending_or_waitlist",
+                "access_requests.rejected",
+            ),
+        )
+
     def test_stale_access_requests_are_selected_conservatively(self):
         stale_pending = AccessRequest.objects.create(
             email="stale-pending@example.com",
@@ -701,11 +914,29 @@ class RetentionCleanupTests(TestCase):
         )
         AccessRequest.objects.filter(pk=protected.pk).update(updated_at=timezone.now() - timedelta(days=120))
 
+        reviewed_rejected = AccessRequest.objects.create(
+            email="reviewed-rejected@example.com",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.REJECTED,
+            reviewed_at=timezone.now() - timedelta(days=120),
+        )
+
+        completed = AccessRequest.objects.create(
+            email="completed@example.com",
+            status=AccessRequest.Status.COMPLETED,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now() - timedelta(days=120),
+        )
+        AccessRequest.objects.filter(pk=completed.pk).update(updated_at=timezone.now() - timedelta(days=120))
+
         cleanup_targets = get_cleanup_querysets()
 
         self.assertIn(stale_pending, cleanup_targets["access_requests.pending_or_waitlist"])
         self.assertIn(stale_rejected, cleanup_targets["access_requests.rejected"])
         self.assertNotIn(protected, cleanup_targets["access_requests.pending_or_waitlist"])
+        self.assertNotIn(reviewed_rejected, cleanup_targets["access_requests.rejected"])
+        self.assertNotIn(completed, cleanup_targets["access_requests.pending_or_waitlist"])
 
     def test_cleanup_retention_dry_run_does_not_delete(self):
         AuthAccessToken.objects.create(
@@ -725,6 +956,8 @@ class RetentionCleanupTests(TestCase):
         call_command("cleanup_retention", "--dry-run", stdout=output)
 
         self.assertIn("auth_tokens.qr_expired: 1 would delete", output.getvalue())
+        self.assertIn("Processing Whisper cleanup categories:", output.getvalue())
+        self.assertIn("sessions: cleanup enabled via clearsessions (dry-run cannot preview count)", output.getvalue())
         self.assertEqual(AuthAccessToken.objects.count(), 1)
         self.assertEqual(AccessRequest.objects.count(), 1)
 
@@ -746,8 +979,15 @@ class RetentionCleanupTests(TestCase):
         call_command("cleanup_retention", stdout=output)
 
         self.assertIn("Cleanup complete. Deleted 2 records.", output.getvalue())
+        self.assertIn("sessions: cleanup executed via clearsessions", output.getvalue())
         self.assertFalse(AuthAccessToken.objects.filter(pk=stale_token.pk).exists())
         self.assertFalse(AccessRequest.objects.filter(pk=stale_request.pk).exists())
+
+    def test_cleanup_querysets_do_not_include_agentuser_or_listing_models(self):
+        cleanup_targets = get_cleanup_querysets()
+
+        self.assertTrue(all(queryset.model is not AgentUser for queryset in cleanup_targets.values()))
+        self.assertTrue(all(queryset.model is not Listing for queryset in cleanup_targets.values()))
 
 
 @override_settings(
@@ -1298,6 +1538,9 @@ class ListingPriceInputParsingTests(TestCase):
             "stage": Listing.Stage.PREMARKET,
             "property_type": "Townhouse",
             "description": "Quiet block with finished basement.",
+            "seller_direction_certified": "on",
+            "agent_compliance_acknowledged": "on",
+            "information_accuracy_certified": "on",
         }
 
     def test_price_input_parses_millions_suffix(self):
@@ -1341,6 +1584,62 @@ class ListingPriceInputParsingTests(TestCase):
         self.assertIn("Enter a valid price like 1000000, 1.2, 1.2M, or 850K.", form.errors["price_min"])
 
 
+class ListingCertificationFormTests(TestCase):
+    def get_base_form_data(self):
+        return {
+            "city": "Scarsdale",
+            "beds": 3,
+            "baths": "2.5",
+            "price_min": "900000",
+            "price_max": "950000",
+            "stage": Listing.Stage.PREMARKET,
+            "property_type": "Townhouse",
+            "description": "Quiet block with finished basement.",
+            "seller_direction_certified": "on",
+            "agent_compliance_acknowledged": "on",
+            "information_accuracy_certified": "on",
+        }
+
+    def test_premarket_succeeds_with_universal_certifications(self):
+        form = ListingForm(data=self.get_base_form_data())
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_private_listing_fails_without_universal_certifications(self):
+        data = self.get_base_form_data()
+        data["stage"] = Listing.Stage.PRIVATE
+        data["private_marketing_certified"] = "on"
+        data.pop("seller_direction_certified")
+        data.pop("agent_compliance_acknowledged")
+
+        form = ListingForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("You must certify seller direction before posting.", form.errors["seller_direction_certified"])
+        self.assertIn("You must acknowledge compliance responsibility before posting.", form.errors["agent_compliance_acknowledged"])
+
+    def test_listing_fails_without_accuracy_certification(self):
+        data = self.get_base_form_data()
+        data.pop("information_accuracy_certified")
+
+        form = ListingForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "You must certify that the submitted information is accurate before sharing this opportunity.",
+            form.errors["information_accuracy_certified"],
+        )
+
+    def test_private_listing_succeeds_with_all_required_certifications(self):
+        data = self.get_base_form_data()
+        data["stage"] = Listing.Stage.PRIVATE
+        data["private_marketing_certified"] = "on"
+
+        form = ListingForm(data=data)
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+
 class TownAreaChoiceTests(TestCase):
     def test_listing_form_rejects_town_area_outside_controlled_list(self):
         form = ListingForm(
@@ -1353,6 +1652,9 @@ class TownAreaChoiceTests(TestCase):
                 "stage": Listing.Stage.PREMARKET,
                 "property_type": "",
                 "description": "",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
             }
         )
 
@@ -1404,7 +1706,7 @@ class FeedListingModalTests(TestCase):
         self.assertContains(response, "id=\"account-overlay\"")
         self.assertContains(response, "action=\"/post/?source=feed\"")
         self.assertContains(response, "Filters")
-        self.assertContains(response, "Post Listing")
+        self.assertContains(response, "Share Opportunity")
         self.assertContains(response, "aria-label=\"Mobile navigation\"")
         self.assertContains(response, "href=\"/account/\" class=\"mobile-account-entry\"")
         self.assertContains(response, ">Home</span>", html=False)
@@ -1488,6 +1790,83 @@ class BoardAccessTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Current Opportunities")
+
+    def test_verified_user_without_legal_acceptance_is_redirected_to_legal_step(self):
+        agent = create_agent(
+            name="Board Legal Agent",
+            email="board-legal@example.com",
+            license_number="LIC-BOARD-LEGAL",
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        login_agent(self.client, agent)
+
+        response = self.client.get(reverse("feed"), follow=True)
+
+        self.assertRedirects(response, reverse("legal_acceptance"))
+
+    def test_verified_user_without_legal_acceptance_is_redirected_from_other_protected_route(self):
+        agent = create_agent(
+            name="Workspace Legal Agent",
+            email="workspace-legal@example.com",
+            license_number="LIC-WORKSPACE-LEGAL",
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        login_agent(self.client, agent)
+
+        response = self.client.get(reverse("workspace"), follow=True)
+
+        self.assertRedirects(response, reverse("legal_acceptance"))
+
+    def test_public_routes_remain_accessible_without_legal_acceptance(self):
+        agent = create_agent(
+            name="Public Route Agent",
+            email="public-route@example.com",
+            license_number="LIC-PUBLIC-ROUTE",
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        login_agent(self.client, agent)
+
+        self.assertEqual(self.client.get(reverse("legal_acceptance")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("terms_of_use")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("privacy_policy")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("request_access")).status_code, 200)
+
+    def test_magic_link_sign_in_redirects_to_legal_step_when_acceptance_incomplete(self):
+        agent = create_agent(
+            name="Magic Legal Agent",
+            email="magic-legal@example.com",
+            license_number="LIC-MAGIC-LEGAL",
+            terms_accepted=False,
+            privacy_accepted=False,
+            terms_accepted_at=None,
+            privacy_accepted_at=None,
+            terms_version="",
+            privacy_version="",
+        )
+        token = AuthAccessToken.objects.create(
+            agent=agent,
+            email=agent.email,
+            expires_at=timezone.now() + timedelta(minutes=30),
+        )
+
+        response = self.client.get(reverse("consume_auth_access_token", args=[token.token]), follow=True)
+
+        self.assertRedirects(response, reverse("legal_acceptance"))
 
     def test_logout_clears_board_access_state(self):
         agent = create_agent(
@@ -1975,7 +2354,7 @@ class FeedFilteringTests(TestCase):
         self.assertContains(response, "Scarsdale premarket.")
         self.assertContains(response, "Rye private listing.")
         self.assertContains(response, "White Plains condo.")
-        self.assertContains(response, "My Listings")
+        self.assertContains(response, "My Opportunities")
 
     def test_saved_workspace_view_filters_to_saved_listings(self):
         saved_listing = Listing.objects.get(city="Scarsdale")
@@ -2078,7 +2457,7 @@ class CollectionTests(TestCase):
 
         self.assertContains(response, "Save this intent")
         self.assertContains(response, "Save to Collection")
-        self.assertContains(response, "Notify me when a new post matches this filter")
+        self.assertContains(response, "Notify me when a new opportunity matches this filter")
 
     def test_feed_disables_save_collection_without_filters(self):
         response = self.client.get(reverse("feed"))
@@ -2132,7 +2511,7 @@ class CollectionTests(TestCase):
 
         self.assertContains(response, "No current opportunities")
         self.assertContains(response, "Adjust your filters or clear them to widen the board.")
-        self.assertContains(response, "Notify me when a new post matches this filter")
+        self.assertContains(response, "Notify me when a new opportunity matches this filter")
         self.assertContains(response, "We’ll save this as a collection alert.")
 
     def test_save_filtered_intent_to_existing_collection_enables_notifications(self):
@@ -2216,13 +2595,16 @@ class CollectionTests(TestCase):
                 "stage": Listing.Stage.PREMARKET,
                 "property_type": "House",
                 "description": "New matching post.",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
             },
             follow=True,
         )
 
         self.assertRedirects(response, reverse("feed"))
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].subject, "Whisper — New Board Posting matches Beekman Collection")
+        self.assertEqual(mail.outbox[0].subject, "Whisper — New Opportunity matches Beekman Collection")
         listing = Listing.objects.get(agent=poster, city="Scarsdale")
         self.assertTrue(
             EmailNotificationLog.objects.filter(
@@ -2306,6 +2688,9 @@ class CollectionTests(TestCase):
                 "stage": Listing.Stage.PREMARKET,
                 "property_type": "House",
                 "description": "In-app match post.",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
             },
         )
 
@@ -2314,13 +2699,14 @@ class CollectionTests(TestCase):
         self.assertEqual(notification.collection, subscriber_collection)
         self.assertFalse(notification.is_read)
         self.assertIn("Scarsdale Match", notification.title)
+        self.assertIn("New opportunity matches", notification.title)
 
     def test_notification_open_marks_read_and_redirects_to_destination(self):
         notification = InAppNotification.objects.create(
             agent=self.agent,
             notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
-            title="New board posting matches Core Buyers",
-            body="A matching listing is live.",
+            title="New opportunity matches Core Buyers",
+            body="A matching opportunity is live.",
             link_url="/board/?city=Scarsdale",
         )
 
@@ -2334,15 +2720,15 @@ class CollectionTests(TestCase):
         InAppNotification.objects.create(
             agent=self.agent,
             notification_type=InAppNotification.NotificationType.COLLECTION_MATCH,
-            title="New board posting matches Core Buyers",
-            body="A matching listing is live.",
+            title="New opportunity matches Core Buyers",
+            body="A matching opportunity is live.",
             link_url="/board/?city=Scarsdale",
         )
 
         response = self.client.get(reverse("notifications"))
 
         self.assertContains(response, "Notifications")
-        self.assertContains(response, "New board posting matches Core Buyers")
+        self.assertContains(response, "New opportunity matches Core Buyers")
         self.assertContains(response, "Unread")
 
     def test_collection_alert_fallback_command_dry_run_is_safe(self):
@@ -2474,14 +2860,14 @@ class SavedListingTests(TestCase):
     def test_feed_renders_star_state_for_saved_and_unsaved_listing(self):
         unsaved_response = self.client.get(reverse("feed"))
 
-        self.assertContains(unsaved_response, "aria-label=\"Save listing\"")
+        self.assertContains(unsaved_response, "aria-label=\"Save opportunity\"")
         self.assertContains(unsaved_response, "☆")
 
         SavedListing.objects.create(agent=self.agent, listing=self.listing)
 
         saved_response = self.client.get(reverse("feed"))
 
-        self.assertContains(saved_response, "aria-label=\"Unsave listing\"")
+        self.assertContains(saved_response, "aria-label=\"Unsave opportunity\"")
         self.assertContains(saved_response, "★")
         self.assertContains(saved_response, "save-listing-button is-saved")
 
@@ -2638,13 +3024,16 @@ class WorkspaceTests(TestCase):
         response = self.client.get(reverse("edit_listing", args=[self.listing_one.id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Edit Listing")
+        self.assertContains(response, "Edit Opportunity")
         self.assertContains(response, "value=\"Scarsdale\"", html=False)
         self.assertContains(response, "value=\"3\"", html=False)
         self.assertContains(response, "value=\"2.0\"", html=False)
         self.assertContains(response, "value=\"1000000\"", html=False)
         self.assertContains(response, "value=\"1200000\"", html=False)
         self.assertContains(response, "Scarsdale premarket.")
+        self.assertContains(response, "seller_direction_certified")
+        self.assertContains(response, "agent_compliance_acknowledged")
+        self.assertContains(response, "information_accuracy_certified")
 
     def test_edit_listing_updates_existing_post_and_redirects_to_workspace(self):
         response = self.client.post(
@@ -2658,6 +3047,10 @@ class WorkspaceTests(TestCase):
                 "stage": Listing.Stage.PRIVATE,
                 "property_type": "House",
                 "description": "Updated owner copy.",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
+                "private_marketing_certified": "on",
             },
             follow=True,
         )
@@ -2672,7 +3065,29 @@ class WorkspaceTests(TestCase):
         self.assertEqual(self.listing_one.stage, Listing.Stage.PRIVATE)
         self.assertEqual(self.listing_one.description, "Updated owner copy.")
         self.assertEqual(self.listing_one.title, "5 Bed / 4.0 Bath in Rye")
-        self.assertContains(response, "Listing updated")
+        self.assertContains(response, "Opportunity updated")
+
+    def test_edit_listing_fails_when_required_certifications_are_removed(self):
+        response = self.client.post(
+            reverse("edit_listing", args=[self.listing_one.id]),
+            {
+                "city": "Rye",
+                "beds": 5,
+                "baths": "4.0",
+                "price_min": "2.1M",
+                "price_max": "2.4M",
+                "stage": Listing.Stage.PRIVATE,
+                "property_type": "House",
+                "description": "Updated owner copy.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You must certify seller direction before posting.")
+        self.assertContains(response, "You must acknowledge compliance responsibility before posting.")
+        self.assertContains(response, "You must certify seller direction for a private listing before posting.")
+        self.listing_one.refresh_from_db()
+        self.assertEqual(self.listing_one.city, "Scarsdale")
 
     @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_edit_active_listing_from_non_matching_to_matching_sends_collection_alert_and_in_app_notification(self):
@@ -2705,6 +3120,10 @@ class WorkspaceTests(TestCase):
                 "stage": Listing.Stage.PRIVATE,
                 "property_type": "House",
                 "description": "Updated owner copy.",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
+                "private_marketing_certified": "on",
             },
             follow=True,
         )
@@ -2712,7 +3131,7 @@ class WorkspaceTests(TestCase):
         self.assertRedirects(response, reverse("workspace") + "?section=posts")
         self.listing_one.refresh_from_db()
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].subject, "Whisper — New Board Posting matches Rye Watch")
+        self.assertEqual(mail.outbox[0].subject, "Whisper — New Opportunity matches Rye Watch")
         self.assertTrue(
             EmailNotificationLog.objects.filter(
                 collection=subscriber_collection,
@@ -2753,6 +3172,10 @@ class WorkspaceTests(TestCase):
             "stage": Listing.Stage.PRIVATE,
             "property_type": "House",
             "description": "Updated owner copy.",
+            "seller_direction_certified": "on",
+            "agent_compliance_acknowledged": "on",
+            "information_accuracy_certified": "on",
+            "private_marketing_certified": "on",
         }
 
         self.client.post(reverse("edit_listing", args=[self.listing_one.id]), edit_payload, follow=True)
@@ -2812,6 +3235,10 @@ class WorkspaceTests(TestCase):
                 "stage": Listing.Stage.PRIVATE,
                 "property_type": "House",
                 "description": "Updated owner copy.",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
+                "private_marketing_certified": "on",
             },
             follow=True,
         )
@@ -2856,7 +3283,7 @@ class WorkspaceTests(TestCase):
         response = self.client.get(reverse("edit_listing", args=[other_listing.id]), follow=True)
 
         self.assertRedirects(response, reverse("workspace") + "?section=posts")
-        self.assertContains(response, "Only the listing owner can edit this post.")
+        self.assertContains(response, "Only the opportunity owner can edit this post.")
 
     def test_owner_can_remove_listing_from_my_posts(self):
         response = self.client.post(
@@ -2867,7 +3294,7 @@ class WorkspaceTests(TestCase):
         self.assertRedirects(response, reverse("workspace") + "?section=posts")
         self.listing_one.refresh_from_db()
         self.assertFalse(self.listing_one.is_active)
-        self.assertContains(response, "Listing removed")
+        self.assertContains(response, "Opportunity removed")
 
         refreshed_response = self.client.get(reverse("workspace"), {"section": "posts"})
         self.assertNotContains(refreshed_response, "3 Bed / 2.0 Bath in Scarsdale")
@@ -2896,7 +3323,7 @@ class WorkspaceTests(TestCase):
         self.assertRedirects(response, reverse("workspace") + "?section=posts")
         other_listing.refresh_from_db()
         self.assertTrue(other_listing.is_active)
-        self.assertContains(response, "Only the listing owner can remove this post.")
+        self.assertContains(response, "Only the opportunity owner can remove this post.")
 
 
 class ListingCheckInTests(TestCase):
@@ -3020,7 +3447,7 @@ class ListingCheckInTests(TestCase):
         call_command("send_listing_checkins")
 
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].subject, "Whisper Listing Check-In")
+        self.assertEqual(mail.outbox[0].subject, "Whisper Opportunity Check-In")
         self.assertIn("Rye Colonial", mail.outbox[0].body)
         self.assertIn("4 Bed / 3.0 Bath in Scarsdale", mail.outbox[0].body)
 
@@ -3122,7 +3549,7 @@ class ListingCheckInTests(TestCase):
         self.assertEqual(self.listing.reminder_count, 0)
         self.assertIsNone(self.listing.last_reminder_sent_at)
         self.assertTrue(self.listing.is_active)
-        self.assertContains(response, "Thanks! Your listing has been confirmed.")
+        self.assertContains(response, "Thanks! Your opportunity has been confirmed.")
 
     def test_removal_endpoint_marks_listing_removed(self):
         token = build_signed_listing_token(self.listing, "remove")
@@ -3134,7 +3561,7 @@ class ListingCheckInTests(TestCase):
         self.assertFalse(self.listing.is_active)
         self.assertEqual(self.listing.status, Listing.Status.REMOVED_BY_AGENT)
         self.assertIsNotNone(self.listing.removed_at)
-        self.assertContains(response, "Your listing has been removed.")
+        self.assertContains(response, "Your opportunity has been removed.")
 
     def test_required_update_listings_become_inactive_after_grace_period(self):
         stale_listing = Listing.objects.create(
@@ -3207,7 +3634,7 @@ class ListingCheckInTests(TestCase):
         self.assertEqual(stale_listing.status, Listing.Status.ACTIVE)
         self.assertIsNone(stale_listing.removed_at)
         self.assertEqual(stale_listing.reminder_count, 0)
-        self.assertContains(response, "Thanks! Your listing has been confirmed.")
+        self.assertContains(response, "Thanks! Your opportunity has been confirmed.")
 
         feed_response = self.client.get(reverse("feed"))
         self.assertContains(feed_response, "Reactivatable Listing")
@@ -3419,8 +3846,9 @@ class EmailRenderingTests(TestCase):
             ],
         )
 
-        self.assertEqual(subject, "Whisper Listing Check-In")
+        self.assertEqual(subject, "Whisper Opportunity Check-In")
         self.assertIn("Rye Opportunity", html_body)
+        self.assertIn("Are these opportunities still active?", html_body)
         self.assertIn("https://example.com/confirm", html_body)
         self.assertIn("https://example.com/remove", text_body)
         self.assertIn("Last validated: Required Update", text_body)
@@ -3508,4 +3936,4 @@ class ListingFreshnessTests(TestCase):
         self.assertRedirects(response, reverse("feed"))
         listing.refresh_from_db()
         self.assertEqual(listing.last_confirmed_at, old_time)
-        self.assertContains(response, "Only the listing owner can confirm availability.")
+        self.assertContains(response, "Only the opportunity owner can confirm availability.")
