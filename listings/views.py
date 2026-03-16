@@ -1499,6 +1499,19 @@ def build_listing_title(*, beds, baths, city):
     return f"{beds} Bed / {baths} Bath in {city}"
 
 
+def populate_listing_certification_timestamps(listing):
+    now = timezone.now()
+
+    if listing.seller_direction_certified and not listing.seller_direction_certified_at:
+        listing.seller_direction_certified_at = now
+    if listing.agent_compliance_acknowledged and not listing.agent_compliance_acknowledged_at:
+        listing.agent_compliance_acknowledged_at = now
+    if listing.information_accuracy_certified and not listing.information_accuracy_certified_at:
+        listing.information_accuracy_certified_at = now
+    if listing.stage == Listing.Stage.PRIVATE and listing.private_marketing_certified and not listing.private_marketing_certified_at:
+        listing.private_marketing_certified_at = now
+
+
 def render_post_listing(request, form, template_name, show_listing_form=False):
     if template_name == "feed.html":
         return render(
@@ -1550,6 +1563,7 @@ def post_listing(request):
                 baths=listing.baths,
                 city=listing.city,
             )
+            populate_listing_certification_timestamps(listing)
             listing.save()
             send_collection_match_alerts_for_listing(listing)
             return redirect("feed")
@@ -1583,6 +1597,7 @@ def edit_listing(request, listing_id):
                 baths=updated_listing.baths,
                 city=updated_listing.city,
             )
+            populate_listing_certification_timestamps(updated_listing)
             updated_listing.save()
             if updated_listing.is_active:
                 send_collection_match_alerts_for_listing(updated_listing)

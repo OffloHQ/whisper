@@ -3,14 +3,17 @@
         display: grid;
         gap: 1rem;
     }
+
     .listing-form .form-row {
         display: grid;
         gap: 0.45rem;
     }
+
     .listing-form .field-errors {
         color: #7c2d12;
         font-size: 0.92rem;
     }
+
     .certification-section {
         display: grid;
         gap: 0.85rem;
@@ -19,26 +22,46 @@
         border-radius: 16px;
         background: rgba(31, 26, 20, 0.03);
     }
+
     .certification-section h3 {
         margin: 0;
         font-size: 1rem;
     }
+
     .certification-section p {
         margin: 0;
     }
+
     .certification-check {
-        display: grid;
-        gap: 0.45rem;
+        display: block;
     }
+
     .certification-check label {
         display: flex;
-        align-items: start;
+        align-items: flex-start;
         gap: 0.65rem;
-        line-height: 1.4;
+        line-height: 1.45;
+        cursor: pointer;
     }
+
     .certification-check input[type="checkbox"] {
-        margin-top: 0.18rem;
+        width: auto !important;
+        min-width: 16px;
+        max-width: 16px;
+        height: 16px;
+        margin: 0.2rem 0 0;
+        flex: 0 0 16px;
     }
+
+    .certification-check span {
+        display: block;
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: break-word;
+    }
+
     [hidden] {
         display: none !important;
     }

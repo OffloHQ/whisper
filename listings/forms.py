@@ -1,7 +1,35 @@
+import re
+
 from django import forms
 
 from .models import Collection, Listing
 from .utils import PRICE_INPUT_ERROR, get_town_area_choices, parse_price_input
+
+
+IDENTIFIER_BLOCKING_ERROR = (
+    "Please remove exact property identifiers, direct contact details, and links. "
+    "Share only high-level opportunity information in Whisper."
+)
+
+ADDRESS_LIKE_PATTERNS = [
+    re.compile(
+        r"\b\d{1,5}(?:-\d{1,5})?\s+(?:(?:north|south|east|west)\s+)?(?:[a-z0-9]+\s+){0,4}"
+        r"(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd|place|pl|court|ct|terrace|ter|way|parkway|pkwy)\b\.?",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:apt|apartment|unit|suite|ste)\s*#?\s*[a-z0-9-]+\b", re.IGNORECASE),
+    re.compile(r"#\s*\d+[a-z]?\b", re.IGNORECASE),
+    re.compile(r"\bmls\s*#?\s*\d{4,}\b", re.IGNORECASE),
+    re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE),
+    re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    re.compile(r"(?:\+?1[\s.\-]?)?(?:\(?\d{3}\)?[\s.\-]?)\d{3}[\s.\-]?\d{4}\b"),
+]
+
+
+def contains_blocked_identifier(text):
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in ADDRESS_LIKE_PATTERNS)
 
 
 class ListingForm(forms.ModelForm):
@@ -63,6 +91,10 @@ class ListingForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         stage = cleaned_data.get("stage")
+
+        for field_name in ("property_type", "description"):
+            if contains_blocked_identifier(cleaned_data.get(field_name, "")):
+                self.add_error(field_name, IDENTIFIER_BLOCKING_ERROR)
 
         if not cleaned_data.get("seller_direction_certified"):
             self.add_error("seller_direction_certified", "You must certify seller direction before posting.")

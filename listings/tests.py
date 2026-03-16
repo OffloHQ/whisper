@@ -280,6 +280,123 @@ class PostListingViewTests(TestCase):
         self.assertTrue(listing.information_accuracy_certified)
         self.assertTrue(listing.private_marketing_certified)
 
+    def test_post_listing_rejects_description_with_exact_address(self):
+        agent = create_agent(
+            name="Address Block Agent",
+            email="address-block@example.com",
+            license_number="LIC-ADDRESS-BLOCK",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["description"] = "Seller wants a quiet process at 123 Main St."
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Please remove exact property identifiers, direct contact details, and links. Share only high-level opportunity information in Whisper.",
+        )
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_post_listing_rejects_description_with_phone_number(self):
+        agent = create_agent(
+            name="Phone Block Agent",
+            email="phone-block@example.com",
+            license_number="LIC-PHONE-BLOCK",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["description"] = "Text me at 914-555-1212 for the full story."
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please remove exact property identifiers, direct contact details, and links.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_post_listing_rejects_description_with_email_address(self):
+        agent = create_agent(
+            name="Email Block Agent",
+            email="email-block@example.com",
+            license_number="LIC-EMAIL-BLOCK",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["description"] = "Reach me at broker@example.com for details."
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please remove exact property identifiers, direct contact details, and links.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_post_listing_rejects_description_with_url(self):
+        agent = create_agent(
+            name="URL Block Agent",
+            email="url-block@example.com",
+            license_number="LIC-URL-BLOCK",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["description"] = "Full packet here: https://example.com/offer"
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please remove exact property identifiers, direct contact details, and links.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_post_listing_rejects_description_with_mls_reference(self):
+        agent = create_agent(
+            name="MLS Block Agent",
+            email="mls-block@example.com",
+            license_number="LIC-MLS-BLOCK",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["description"] = "Cross-ref MLS# 1234567 before calling."
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Please remove exact property identifiers, direct contact details, and links.")
+        self.assertEqual(Listing.objects.count(), 0)
+
+    def test_post_listing_sets_certification_timestamps(self):
+        agent = create_agent(
+            name="Timestamp Agent",
+            email="timestamp-agent@example.com",
+            license_number="LIC-TIMESTAMP",
+        )
+        login_agent(self.client, agent)
+
+        response = self.client.post(reverse("post_listing"), data=self.get_valid_payload())
+
+        self.assertRedirects(response, reverse("feed"))
+        listing = Listing.objects.get(agent=agent)
+        self.assertIsNotNone(listing.seller_direction_certified_at)
+        self.assertIsNotNone(listing.agent_compliance_acknowledged_at)
+        self.assertIsNotNone(listing.information_accuracy_certified_at)
+        self.assertIsNone(listing.private_marketing_certified_at)
+
+    def test_private_listing_sets_private_certification_timestamp(self):
+        agent = create_agent(
+            name="Private Timestamp Agent",
+            email="private-timestamp@example.com",
+            license_number="LIC-PRIVATE-TIMESTAMP",
+        )
+        login_agent(self.client, agent)
+        payload = self.get_valid_payload()
+        payload["stage"] = Listing.Stage.PRIVATE
+        payload["private_marketing_certified"] = "on"
+
+        response = self.client.post(reverse("post_listing"), data=payload)
+
+        self.assertRedirects(response, reverse("feed"))
+        listing = Listing.objects.get(agent=agent)
+        self.assertIsNotNone(listing.private_marketing_certified_at)
+
 
 class ListingPhoneValidationTests(TestCase):
     def test_listing_creation_fails_when_agent_has_no_phone(self):
@@ -1634,6 +1751,39 @@ class ListingCertificationFormTests(TestCase):
         data = self.get_base_form_data()
         data["stage"] = Listing.Stage.PRIVATE
         data["private_marketing_certified"] = "on"
+
+        form = ListingForm(data=data)
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_listing_form_rejects_description_with_exact_identifier(self):
+        data = self.get_base_form_data()
+        data["description"] = "Quiet seller at 12 West 34th Street."
+
+        form = ListingForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "Please remove exact property identifiers, direct contact details, and links. Share only high-level opportunity information in Whisper.",
+            form.errors["description"],
+        )
+
+    def test_listing_form_rejects_property_type_with_address_like_text(self):
+        data = self.get_base_form_data()
+        data["property_type"] = "Loft at 44-12 Broadway Ave"
+
+        form = ListingForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "Please remove exact property identifiers, direct contact details, and links. Share only high-level opportunity information in Whisper.",
+            form.errors["property_type"],
+        )
+
+    def test_listing_form_allows_broad_area_narrative_without_exact_identifiers(self):
+        data = self.get_base_form_data()
+        data["property_type"] = "Townhouse"
+        data["description"] = "Quiet premarket opportunity in Scarsdale near the village with flexible timing."
 
         form = ListingForm(data=data)
 
@@ -3066,6 +3216,45 @@ class WorkspaceTests(TestCase):
         self.assertEqual(self.listing_one.description, "Updated owner copy.")
         self.assertEqual(self.listing_one.title, "5 Bed / 4.0 Bath in Rye")
         self.assertContains(response, "Opportunity updated")
+
+    def test_edit_listing_preserves_existing_certification_timestamps(self):
+        original_time = timezone.now() - timedelta(days=3)
+        self.listing_one.seller_direction_certified = True
+        self.listing_one.seller_direction_certified_at = original_time
+        self.listing_one.agent_compliance_acknowledged = True
+        self.listing_one.agent_compliance_acknowledged_at = original_time
+        self.listing_one.information_accuracy_certified = True
+        self.listing_one.information_accuracy_certified_at = original_time
+        self.listing_one.private_marketing_certified = True
+        self.listing_one.private_marketing_certified_at = original_time
+        self.listing_one.stage = Listing.Stage.PRIVATE
+        self.listing_one.save()
+
+        response = self.client.post(
+            reverse("edit_listing", args=[self.listing_one.id]),
+            {
+                "city": "Rye",
+                "beds": 5,
+                "baths": "4.0",
+                "price_min": "2.1M",
+                "price_max": "2.4M",
+                "stage": Listing.Stage.PRIVATE,
+                "property_type": "House",
+                "description": "Updated owner copy.",
+                "seller_direction_certified": "on",
+                "agent_compliance_acknowledged": "on",
+                "information_accuracy_certified": "on",
+                "private_marketing_certified": "on",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("workspace") + "?section=posts")
+        self.listing_one.refresh_from_db()
+        self.assertEqual(self.listing_one.seller_direction_certified_at, original_time)
+        self.assertEqual(self.listing_one.agent_compliance_acknowledged_at, original_time)
+        self.assertEqual(self.listing_one.information_accuracy_certified_at, original_time)
+        self.assertEqual(self.listing_one.private_marketing_certified_at, original_time)
 
     def test_edit_listing_fails_when_required_certifications_are_removed(self):
         response = self.client.post(
