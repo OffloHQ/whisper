@@ -85,13 +85,13 @@
     {% endfor %}
     <section class="certification-section" aria-labelledby="listing-certifications-title">
         <div>
-            <h3 id="listing-certifications-title">Certifications</h3>
+            <h3 id="listing-certifications-title">Confirm Before Sharing</h3>
             <p class="muted">Required before this opportunity can go live.</p>
         </div>
         <div class="certification-check">
             <label for="{{ form.seller_direction_certified.id_for_label }}">
                 {{ form.seller_direction_certified }}
-                <span>{{ form.seller_direction_certified.label }}</span>
+                <span>I have the seller’s direction to share this opportunity.</span>
             </label>
             <div class="field-errors" data-certification-error-for="seller_direction_certified">
                 {% if form.seller_direction_certified.errors %}{{ form.seller_direction_certified.errors|striptags }}{% endif %}
@@ -100,7 +100,7 @@
         <div class="certification-check">
             <label for="{{ form.agent_compliance_acknowledged.id_for_label }}">
                 {{ form.agent_compliance_acknowledged }}
-                <span>{{ form.agent_compliance_acknowledged.label }}</span>
+                <span>I’m responsible for complying with my brokerage, MLS, and local rules.</span>
             </label>
             <div class="field-errors" data-certification-error-for="agent_compliance_acknowledged">
                 {% if form.agent_compliance_acknowledged.errors %}{{ form.agent_compliance_acknowledged.errors|striptags }}{% endif %}
@@ -109,7 +109,7 @@
         <div class="certification-check">
             <label for="{{ form.information_accuracy_certified.id_for_label }}">
                 {{ form.information_accuracy_certified }}
-                <span>{{ form.information_accuracy_certified.label }}</span>
+                <span>I confirm the information shared here is accurate.</span>
             </label>
             <div class="field-errors" data-certification-error-for="information_accuracy_certified">
                 {% if form.information_accuracy_certified.errors %}{{ form.information_accuracy_certified.errors|striptags }}{% endif %}
@@ -118,7 +118,7 @@
         <div class="certification-check" data-private-certification {% if form.stage.value != "private" %}hidden{% endif %}>
             <label for="{{ form.private_marketing_certified.id_for_label }}">
                 {{ form.private_marketing_certified }}
-                <span>{{ form.private_marketing_certified.label }}</span>
+                <span>I confirm this private opportunity is being shared according to the seller’s instructions.</span>
             </label>
             <div class="field-errors" data-certification-error-for="private_marketing_certified">
                 {% if form.private_marketing_certified.errors %}{{ form.private_marketing_certified.errors|striptags }}{% endif %}
