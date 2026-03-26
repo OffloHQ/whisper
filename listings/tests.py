@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.contrib.messages import get_messages
 from django.core import mail
 from django.core.management import call_command
 from io import StringIO
@@ -23,12 +24,11 @@ from .admin import AccessRequestAdmin
 from .checkins import (
     build_signed_listing_token,
     deactivate_stale_listings,
-    get_freshness_state,
     get_freshness_state_label,
     get_listings_requiring_checkin,
+    get_reminder_due_at,
+    get_stale_at,
     group_listings_by_agent_email,
-    OPTIONAL_UPDATE_STATE,
-    REQUIRED_UPDATE_STATE,
     should_send_checkin_for_listing,
     send_grouped_listing_checkins,
 )
@@ -39,6 +39,7 @@ from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccess
 from .retention import get_cleanup_querysets
 from .utils import format_listing_price, get_town_area_choices
 from .verification.schemas import VerificationResult, VerificationStatus
+from .verification.utils import normalize_state_code
 from .views import CURRENT_AGENT_LOCKED_OUT_KEY, CURRENT_AGENT_SESSION_KEY
 
 
@@ -595,6 +596,88 @@ class AccessFlowTests(TestCase):
         self.assertTrue(mock_waitlist_access_request.called)
         self.assertContains(response, WAITLIST_TOAST_MESSAGE)
 
+    @patch("listings.views.VerificationService.verify_license")
+    def test_signup_identity_new_york_input_stores_canonical_state_and_skips_waitlist(self, mock_verify_license):
+        access_request = AccessRequest.objects.create(email="newyork-signup@example.com")
+        from .email_flows import build_access_request_signup_token
+
+        mock_verify_license.return_value = build_verification_result(
+            state="NY",
+            raw_payload={"license_number": "LIC-NY-12345"},
+        )
+
+        response = self.client.post(
+            reverse("signup_identity", args=[build_access_request_signup_token(access_request)]),
+            {
+                "full_name": "New York Agent",
+                "state": "New York",
+                "license_number": "LIC-NY-12345",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("signup_contact"))
+        agent = AgentUser.objects.get(email="newyork-signup@example.com")
+        access_request.refresh_from_db()
+        self.assertEqual(agent.state, "NY")
+        self.assertEqual(access_request.state, "NY")
+        self.assertEqual(access_request.queue_type, AccessRequest.QueueType.NONE)
+        self.assertEqual(access_request.verification_status, AccessRequest.VerificationStatus.VERIFIED)
+
+    @patch("listings.verification.providers.ny_soda3.request.urlopen", side_effect=URLError("timed out"))
+    @override_settings(
+        NY_OPEN_DATA_BASE_URL="https://data.ny.gov/resource",
+        NY_REAL_ESTATE_DATASET_ID="abc-1234",
+        NY_LICENSE_API_APP_TOKEN="token-123",
+        NY_LICENSE_API_TIMEOUT=5,
+    )
+    def test_signup_identity_new_york_provider_failure_routes_to_manual_review(self, mock_urlopen):
+        access_request = AccessRequest.objects.create(email="newyork-timeout@example.com")
+        from .email_flows import build_access_request_signup_token
+
+        response = self.client.post(
+            reverse("signup_identity", args=[build_access_request_signup_token(access_request)]),
+            {
+                "full_name": "Timeout Agent",
+                "state": "New York",
+                "license_number": "30AC0961210",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.state, "NY")
+        self.assertEqual(access_request.status, AccessRequest.Status.MANUAL_REVIEW)
+        self.assertEqual(access_request.queue_type, AccessRequest.QueueType.MANUAL_REVIEW)
+        self.assertEqual(access_request.reason_code, AccessRequest.Reason.PROVIDER_ERROR)
+        self.assertContains(
+            response,
+            "We’re having trouble verifying your license right now. A teammate will be in touch shortly.",
+        )
+
+    @patch("listings.views.waitlist_access_request")
+    def test_signup_identity_unsupported_full_state_name_still_routes_to_waitlist(self, mock_waitlist_access_request):
+        access_request = AccessRequest.objects.create(email="california@example.com")
+        from .email_flows import build_access_request_signup_token
+
+        response = self.client.post(
+            reverse("signup_identity", args=[build_access_request_signup_token(access_request)]),
+            {
+                "full_name": "California Agent",
+                "state": "California",
+                "license_number": "CA-12345",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.state, "CA")
+        self.assertEqual(access_request.status, AccessRequest.Status.WAITLIST)
+        self.assertEqual(access_request.queue_type, AccessRequest.QueueType.WAITLIST)
+        self.assertEqual(access_request.reason_code, AccessRequest.Reason.UNSUPPORTED_STATE)
+        self.assertTrue(mock_waitlist_access_request.called)
+        self.assertContains(response, WAITLIST_TOAST_MESSAGE)
+
     def test_signup_identity_redirects_active_registered_email_to_sign_in(self):
         access_request = AccessRequest.objects.create(email="existing@example.com")
         from .email_flows import build_access_request_signup_token
@@ -1120,6 +1203,14 @@ class LicenseVerificationTests(TestCase):
         response.read.return_value = payload.encode("utf-8")
         return response
 
+    def test_normalize_state_code_canonicalizes_multiple_states(self):
+        self.assertEqual(normalize_state_code("New York"), "NY")
+        self.assertEqual(normalize_state_code("california"), "CA")
+        self.assertEqual(normalize_state_code("Texas"), "TX")
+        self.assertEqual(normalize_state_code(" new   jersey "), "NJ")
+        self.assertEqual(normalize_state_code("District of Columbia"), "DC")
+        self.assertEqual(normalize_state_code("Unknownland"), "UNKNOWNLAND")
+
     @patch("listings.verification.providers.ny_soda3.request.urlopen")
     def test_ny_provider_success(self, mock_urlopen):
         from .verification.service import VerificationService
@@ -1161,6 +1252,44 @@ class LicenseVerificationTests(TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(result.status, VerificationStatus.VERIFIED)
+
+    @patch("listings.verification.providers.ny_soda3.request.urlopen")
+    def test_new_york_state_name_resolves_to_ny_provider(self, mock_urlopen):
+        from .verification.service import VerificationService
+
+        mock_urlopen.return_value = self.build_response(
+            '[{"business_name":"COLDWELL BANKER REALTY","business_city":"WHITE PLAINS","license_holder_name":"ACOCELLA BETH A","license_expiration_date":"2028-02-24T00:00:00.000","license_number":"30AC0961210","license_type":"ASSOCIATE BROKER"}]'
+        )
+
+        result = VerificationService().verify_license(
+            full_name="Beth Acocella",
+            state="New York",
+            license_number="30AC0961210",
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.status, VerificationStatus.VERIFIED)
+        self.assertEqual(result.state, "NY")
+        self.assertEqual(result.provider, "ny_soda3")
+
+    @patch("listings.verification.providers.ny_soda3.request.urlopen")
+    def test_lowercase_ny_resolves_to_ny_provider(self, mock_urlopen):
+        from .verification.service import VerificationService
+
+        mock_urlopen.return_value = self.build_response(
+            '[{"business_name":"COLDWELL BANKER REALTY","business_city":"WHITE PLAINS","license_holder_name":"ACOCELLA BETH A","license_expiration_date":"2028-02-24T00:00:00.000","license_number":"30AC0961210","license_type":"ASSOCIATE BROKER"}]'
+        )
+
+        result = VerificationService().verify_license(
+            full_name="Beth Acocella",
+            state="ny",
+            license_number="30AC0961210",
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.status, VerificationStatus.VERIFIED)
+        self.assertEqual(result.state, "NY")
+        self.assertEqual(result.provider, "ny_soda3")
 
     @patch("listings.verification.providers.ny_soda3.request.urlopen")
     def test_license_number_is_normalized_before_query_and_match(self, mock_urlopen):
@@ -1243,6 +1372,21 @@ class LicenseVerificationTests(TestCase):
         self.assertEqual(result.status, VerificationStatus.PROVIDER_ERROR)
         self.assertIn("timed out", result.reason)
 
+    @override_settings(NY_LICENSE_API_APP_TOKEN="")
+    def test_missing_app_token_returns_provider_error_before_request(self):
+        from .verification.service import VerificationService
+
+        result = VerificationService().verify_license(
+            full_name="Beth Acocella",
+            state="NY",
+            license_number="30AC0961210",
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.status, VerificationStatus.PROVIDER_ERROR)
+        self.assertIn("NY verification provider is not configured.", result.reason)
+        self.assertIn("NY_LICENSE_API_APP_TOKEN", result.reason)
+
     @patch("listings.verification.providers.ny_soda3.request.urlopen")
     def test_name_mismatch_routes_to_manual_review(self, mock_urlopen):
         from .verification.service import VerificationService
@@ -1299,11 +1443,11 @@ class IntakePortalTests(TestCase):
 
         access_request.refresh_from_db()
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].subject, "Whisper isn’t in your area yet — but you’re on the list")
+        self.assertEqual(mail.outbox[0].subject, "You’re on the Whisper waitlist")
         self.assertIsNotNone(access_request.waitlist_email_sent_at)
         self.assertEqual(access_request.last_notification_type, AccessRequest.NotificationType.WAITLIST)
 
-    def test_admin_manual_verify_action_updates_state_sends_email_and_generates_continuation_link(self):
+    def test_admin_manual_verify_action_activates_agent_and_sends_sign_in_email(self):
         access_request = AccessRequest.objects.create(
             email="review-approve@example.com",
             full_name="Review Approve",
@@ -1322,45 +1466,105 @@ class IntakePortalTests(TestCase):
 
         access_request.refresh_from_db()
         agent = AgentUser.objects.get(email="review-approve@example.com")
-        self.assertEqual(access_request.queue_type, AccessRequest.QueueType.MANUAL_REVIEW)
-        self.assertEqual(access_request.decision_status, AccessRequest.DecisionStatus.APPROVED)
+        self.assertEqual(access_request.queue_type, AccessRequest.QueueType.NONE)
+        self.assertEqual(access_request.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(access_request.decision_status, AccessRequest.DecisionStatus.COMPLETED)
         self.assertEqual(access_request.reviewed_by, request.user)
         self.assertIsNotNone(access_request.reviewed_at)
+        self.assertIsNotNone(access_request.completed_at)
         self.assertIsNotNone(access_request.approval_email_sent_at)
         self.assertEqual(access_request.last_notification_type, AccessRequest.NotificationType.APPROVAL)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("/signup/continue/", mail.outbox[0].body)
-        self.assertEqual(agent.signup_status, AgentUser.SignupStatus.PENDING_CONTACT)
-        self.assertFalse(agent.is_active)
+        self.assertEqual(mail.outbox[0].subject, "Whisper is live for you now")
+        self.assertIn("/sign-in/", mail.outbox[0].body)
+        self.assertEqual(agent.signup_status, AgentUser.SignupStatus.ACTIVE)
+        self.assertTrue(agent.is_active)
 
-    def test_approved_manual_review_user_can_continue_to_signup_contact(self):
+    def test_admin_waitlist_activate_action_activates_agent_and_sends_sign_in_email(self):
         access_request = AccessRequest.objects.create(
-            email="manual-continue@example.com",
-            full_name="Manual Continue",
-            state="NY",
-            license_number="LIC-REVIEW-2",
+            email="waitlist-live@example.com",
+            full_name="Waitlist Live",
+            state="CA",
+            license_number="LIC-WAITLIST-1",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
+        )
+        request = build_admin_request()
+        self.model_admin.message_user = lambda *args, **kwargs: None
+
+        self.model_admin.activate_waitlisted_requests(request, AccessRequest.objects.filter(pk=access_request.pk))
+
+        access_request.refresh_from_db()
+        agent = AgentUser.objects.get(email="waitlist-live@example.com")
+        self.assertEqual(access_request.queue_type, AccessRequest.QueueType.NONE)
+        self.assertEqual(access_request.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(access_request.decision_status, AccessRequest.DecisionStatus.COMPLETED)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Whisper is live for you now")
+        self.assertIn("/sign-in/", mail.outbox[0].body)
+        self.assertEqual(agent.signup_status, AgentUser.SignupStatus.ACTIVE)
+        self.assertTrue(agent.is_active)
+
+    def test_admin_bulk_waitlist_activate_action_reports_activated_skipped_and_failed_counts(self):
+        waitlist_one = AccessRequest.objects.create(
+            email="waitlist-bulk-1@example.com",
+            full_name="Waitlist Bulk One",
+            state="CA",
+            license_number="LIC-WAITLIST-BULK-1",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
+        )
+        waitlist_two = AccessRequest.objects.create(
+            email="waitlist-bulk-2@example.com",
+            full_name="Waitlist Bulk Two",
+            state="CA",
+            license_number="LIC-WAITLIST-BULK-2",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
+        )
+        manual_review = AccessRequest.objects.create(
+            email="manual-skip@example.com",
             status=AccessRequest.Status.MANUAL_REVIEW,
             queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
             decision_status=AccessRequest.DecisionStatus.PENDING,
-            reason_code=AccessRequest.Reason.NO_MATCH,
-            verification_status=AccessRequest.VerificationStatus.NO_MATCH,
+        )
+        completed = AccessRequest.objects.create(
+            email="completed-skip@example.com",
+            status=AccessRequest.Status.COMPLETED,
+            queue_type=AccessRequest.QueueType.NONE,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now(),
         )
         request = build_admin_request()
-        continuation_link, agent, notification_sent = approve_access_request(
-            access_request=access_request,
-            reviewed_by=request.user,
-            request=request,
-            decision_reason="Manual verification passed.",
+        messages = []
+        self.model_admin.message_user = lambda _request, message, **kwargs: messages.append(message)
+
+        self.model_admin.activate_waitlisted_requests(
+            request,
+            AccessRequest.objects.filter(pk__in=[waitlist_one.pk, waitlist_two.pk, manual_review.pk, completed.pk]),
         )
 
-        self.assertTrue(notification_sent)
-        response = self.client.get(continuation_link, follow=True)
-
-        self.assertRedirects(response, reverse("signup_contact"))
-        self.assertContains(response, "License verified. Continue with contact details.")
-        session = self.client.session
-        self.assertEqual(session["pending_signup_agent_id"], agent.id)
-        self.assertEqual(session["pending_access_request_id"], access_request.id)
+        waitlist_one.refresh_from_db()
+        waitlist_two.refresh_from_db()
+        manual_review.refresh_from_db()
+        completed.refresh_from_db()
+        self.assertTrue(AgentUser.objects.get(email=waitlist_one.email).is_active)
+        self.assertTrue(AgentUser.objects.get(email=waitlist_two.email).is_active)
+        self.assertEqual(waitlist_one.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(waitlist_two.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(manual_review.status, AccessRequest.Status.MANUAL_REVIEW)
+        self.assertEqual(completed.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(
+            messages[-1],
+            "Activated 2 waitlist request(s). Skipped 2. Failed 0.",
+        )
 
     def test_admin_reject_action_updates_state_and_sends_rejection_email(self):
         access_request = AccessRequest.objects.create(
@@ -1461,6 +1665,7 @@ class InternalIntakePortalTests(TestCase):
             full_name="Manual Portal",
             state="NY",
             license_number="LIC-MANUAL-PORTAL",
+            status=AccessRequest.Status.MANUAL_REVIEW,
             queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
             decision_status=AccessRequest.DecisionStatus.PENDING,
             reason_code=AccessRequest.Reason.NAME_MISMATCH,
@@ -1470,6 +1675,7 @@ class InternalIntakePortalTests(TestCase):
             email="waitlist-portal@example.com",
             full_name="Waitlist Portal",
             state="CA",
+            status=AccessRequest.Status.WAITLIST,
             queue_type=AccessRequest.QueueType.WAITLIST,
             decision_status=AccessRequest.DecisionStatus.PENDING,
             reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
@@ -1491,6 +1697,14 @@ class InternalIntakePortalTests(TestCase):
         response = self.client.get(reverse("intake_home"))
 
         self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Admin Portal", status_code=403)
+        self.assertNotContains(response, "intake portal", status_code=403)
+
+    def test_login_page_uses_admin_portal_wording(self):
+        response = self.client.get(reverse("intake_login"))
+
+        self.assertContains(response, "Admin Portal Login")
+        self.assertNotContains(response, "Intake Portal")
 
     def test_authorized_reviewer_can_access_portal(self):
         self.client.force_login(self.reviewer)
@@ -1498,13 +1712,21 @@ class InternalIntakePortalTests(TestCase):
         response = self.client.get(reverse("intake_home"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Intake Portal")
+        self.assertContains(response, "Admin Portal")
 
     def test_manual_review_list_only_shows_manual_review_records(self):
         self.client.force_login(self.reviewer)
 
         response = self.client.get(reverse("intake_manual_review"))
 
+        self.assertContains(response, "<table", html=False)
+        self.assertContains(response, "Last Email")
+        self.assertContains(response, "No email sent")
+        self.assertContains(response, "Approve Selected")
+        self.assertContains(response, "Reject Selected")
+        self.assertContains(response, "Approve / Activate")
+        self.assertContains(response, "Reject")
+        self.assertContains(response, "New York")
         self.assertContains(response, "manual-portal@example.com")
         self.assertNotContains(response, "waitlist-portal@example.com")
 
@@ -1515,6 +1737,190 @@ class InternalIntakePortalTests(TestCase):
 
         self.assertContains(response, "waitlist-portal@example.com")
         self.assertNotContains(response, "manual-portal@example.com")
+        self.assertContains(response, "<table", html=False)
+        self.assertContains(response, "Search")
+        self.assertContains(response, "Bulk Action")
+        self.assertContains(response, "Sort")
+        self.assertContains(response, "Last Email")
+        self.assertContains(response, "Activate Selected")
+        self.assertContains(response, "Resend Access Email")
+        self.assertContains(response, "California")
+        self.assertContains(response, "Showing 1-1 of 1")
+        self.assertContains(response, "Page 1 of 1")
+
+    def test_waitlist_bulk_action_preserves_filter_context_in_redirect(self):
+        self.client.force_login(self.reviewer)
+        next_url = (
+            reverse("intake_waitlist")
+            + "?q=waitlist&state=CA&status=waitlist&sort=date_desc&page=2"
+        )
+
+        response = self.client.post(
+            reverse("intake_activate_waitlist_requests"),
+            {
+                "request_ids": [str(self.waitlist_request.id)],
+                "decision_reason": "Launch complete.",
+                "next": next_url,
+            },
+        )
+
+        self.assertRedirects(response, next_url, fetch_redirect_response=False)
+
+    def test_single_row_action_preserves_filter_context_in_redirect(self):
+        self.client.force_login(self.reviewer)
+        next_url = (
+            reverse("intake_manual_review")
+            + "?q=manual&state=NY&status=manual_review&sort=name&page=2"
+        )
+
+        response = self.client.post(
+            reverse("intake_verify_request", args=[self.manual_request.id]),
+            {
+                "decision_reason": "Reviewed manually.",
+                "next": next_url,
+            },
+        )
+
+        self.assertRedirects(response, next_url, fetch_redirect_response=False)
+
+    def test_manual_review_dashboard_can_filter_by_search_state_and_status(self):
+        self.client.force_login(self.reviewer)
+        matching_request = AccessRequest.objects.create(
+            email="manual-filter@example.com",
+            full_name="Manual Filter Match",
+            state="NY",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        wrong_queue_request = AccessRequest.objects.create(
+            email="waitlist-filter-leak@example.com",
+            full_name="Manual Filter Match",
+            state="NY",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+
+        response = self.client.get(
+            reverse("intake_manual_review"),
+            {"q": "manual filter", "state": "NY", "status": AccessRequest.Status.MANUAL_REVIEW},
+        )
+
+        self.assertContains(response, matching_request.email)
+        self.assertNotContains(response, wrong_queue_request.email)
+        self.assertNotContains(response, self.manual_request.email)
+        self.assertContains(response, "New York")
+        self.assertContains(response, "Clear Filters")
+
+    def test_waitlist_dashboard_can_filter_by_search_state_and_status(self):
+        self.client.force_login(self.reviewer)
+        matching_request = AccessRequest.objects.create(
+            email="waitlist-filter@example.com",
+            full_name="Waitlist Filter Match",
+            state="NY",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        wrong_queue_request = AccessRequest.objects.create(
+            email="manual-filter-leak@example.com",
+            full_name="Waitlist Filter Match",
+            state="NY",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+
+        response = self.client.get(
+            reverse("intake_waitlist"),
+            {"q": "waitlist filter", "state": "NY", "status": AccessRequest.Status.WAITLIST},
+        )
+
+        self.assertContains(response, matching_request.email)
+        self.assertNotContains(response, wrong_queue_request.email)
+        self.assertNotContains(response, self.waitlist_request.email)
+        self.assertContains(response, "New York")
+        self.assertContains(response, "Clear Filters")
+
+    def test_waitlist_dashboard_supports_sort_query_param(self):
+        self.client.force_login(self.reviewer)
+        AccessRequest.objects.create(
+            email="alaska@example.com",
+            full_name="Alaska Agent",
+            state="AK",
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
+        )
+
+        response = self.client.get(reverse("intake_waitlist"), {"sort": "state"})
+
+        self.assertContains(response, 'option value="state" selected')
+        self.assertContains(response, "?sort=state")
+
+    def test_waitlist_dashboard_paginates_results(self):
+        self.client.force_login(self.reviewer)
+        for index in range(30):
+            AccessRequest.objects.create(
+                email=f"waitlist-page-{index}@example.com",
+                full_name=f"Waitlist Page {index}",
+                state="CA",
+                queue_type=AccessRequest.QueueType.WAITLIST,
+                decision_status=AccessRequest.DecisionStatus.PENDING,
+                reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
+            )
+
+        response = self.client.get(reverse("intake_waitlist"))
+
+        self.assertContains(response, "Showing 1-25 of 31")
+        self.assertContains(response, "Page 1 of 2")
+        self.assertContains(response, "Next")
+        self.assertNotContains(response, "waitlist-page-0@example.com")
+
+        page_two = self.client.get(reverse("intake_waitlist"), {"page": 2})
+        self.assertContains(page_two, "Showing 26-31 of 31")
+        self.assertContains(page_two, "Page 2 of 2")
+        self.assertContains(page_two, "waitlist-page-0@example.com")
+
+    def test_waitlist_row_resend_visibility_matches_eligibility(self):
+        self.client.force_login(self.reviewer)
+        eligible_waitlist = AccessRequest.objects.create(
+            email="eligible-resend@example.com",
+            full_name="Eligible Resend",
+            state="CA",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        create_agent(
+            name="Eligible Resend",
+            email=eligible_waitlist.email,
+            license_number="LIC-ELIGIBLE-RESEND",
+            state="CA",
+            signup_status=AgentUser.SignupStatus.ACTIVE,
+            is_active=True,
+            is_verified=True,
+        )
+
+        response = self.client.get(reverse("intake_waitlist"))
+
+        self.assertContains(response, "Resend Access Email", count=2)
+
+    def test_manual_review_dashboard_empty_state_is_queue_specific(self):
+        self.client.force_login(self.reviewer)
+
+        response = self.client.get(reverse("intake_manual_review"), {"q": "missing-record"})
+
+        self.assertContains(response, "No manual review requests matched the current filters.")
+        self.assertContains(response, "Clear filters")
+
+    def test_waitlist_row_resend_is_hidden_for_ineligible_record(self):
+        self.client.force_login(self.reviewer)
+
+        response = self.client.get(reverse("intake_waitlist"))
+
+        self.assertContains(response, "Resend Access Email", count=1)
 
     def test_reviewer_can_verify_manual_review_record(self):
         self.client.force_login(self.reviewer)
@@ -1527,10 +1933,185 @@ class InternalIntakePortalTests(TestCase):
 
         self.assertRedirects(response, reverse("intake_request_detail", args=[self.manual_request.id]))
         self.manual_request.refresh_from_db()
-        self.assertEqual(self.manual_request.decision_status, AccessRequest.DecisionStatus.APPROVED)
+        agent = AgentUser.objects.get(email=self.manual_request.email)
+        self.assertEqual(self.manual_request.queue_type, AccessRequest.QueueType.NONE)
+        self.assertEqual(self.manual_request.decision_status, AccessRequest.DecisionStatus.COMPLETED)
         self.assertIsNotNone(self.manual_request.approval_email_sent_at)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("/signup/continue/", mail.outbox[0].body)
+        self.assertIn("/sign-in/", mail.outbox[0].body)
+        self.assertTrue(agent.is_active)
+        self.assertEqual(agent.signup_status, AgentUser.SignupStatus.ACTIVE)
+
+    def test_waitlist_manager_can_activate_waitlist_record(self):
+        self.client.force_login(self.reviewer)
+
+        response = self.client.post(
+            reverse("intake_verify_request", args=[self.waitlist_request.id]),
+            {"decision_reason": "Whisper is live in this market now."},
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_request_detail", args=[self.waitlist_request.id]))
+        self.waitlist_request.refresh_from_db()
+        agent = AgentUser.objects.get(email=self.waitlist_request.email)
+        self.assertEqual(self.waitlist_request.queue_type, AccessRequest.QueueType.NONE)
+        self.assertEqual(self.waitlist_request.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(self.waitlist_request.decision_status, AccessRequest.DecisionStatus.COMPLETED)
+        self.assertIsNotNone(self.waitlist_request.approval_email_sent_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Whisper is live for you now")
+        self.assertTrue(agent.is_active)
+        self.assertEqual(agent.signup_status, AgentUser.SignupStatus.ACTIVE)
+
+    def test_waitlist_manager_can_bulk_activate_checked_waitlist_records(self):
+        self.client.force_login(self.reviewer)
+        second_waitlist = AccessRequest.objects.create(
+            email="waitlist-portal-two@example.com",
+            full_name="Waitlist Portal Two",
+            state="CA",
+            license_number="LIC-WAITLIST-PORTAL-2",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.UNSUPPORTED_STATE,
+        )
+        completed = AccessRequest.objects.create(
+            email="waitlist-completed@example.com",
+            status=AccessRequest.Status.COMPLETED,
+            queue_type=AccessRequest.QueueType.NONE,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("intake_activate_waitlist_requests"),
+            {
+                "request_ids": [str(self.waitlist_request.id), str(second_waitlist.id), str(completed.id)],
+                "decision_reason": "Launch complete for selected market.",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_waitlist"))
+        queued_messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertIn("2 requests activated. 1 skipped. 0 failed. Skipped: waitlist-completed@example.com.", queued_messages)
+        self.waitlist_request.refresh_from_db()
+        second_waitlist.refresh_from_db()
+        completed.refresh_from_db()
+        self.assertEqual(self.waitlist_request.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(second_waitlist.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(completed.status, AccessRequest.Status.COMPLETED)
+        self.assertTrue(AgentUser.objects.get(email=self.waitlist_request.email).is_active)
+        self.assertTrue(AgentUser.objects.get(email=second_waitlist.email).is_active)
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_waitlist_manager_can_bulk_invite_active_records_without_status_change(self):
+        self.client.force_login(self.reviewer)
+        active_request = AccessRequest.objects.create(
+            email="active-invite@example.com",
+            full_name="Active Invite",
+            state="NY",
+            status=AccessRequest.Status.COMPLETED,
+            queue_type=AccessRequest.QueueType.NONE,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now(),
+        )
+        create_agent(
+            name="Active Invite",
+            email=active_request.email,
+            license_number="LIC-ACTIVE-INVITE",
+            state="NY",
+            signup_status=AgentUser.SignupStatus.ACTIVE,
+            is_active=True,
+            is_verified=True,
+        )
+
+        response = self.client.post(
+            reverse("intake_activate_waitlist_requests"),
+            {
+                "bulk_action": "invite",
+                "request_ids": [str(active_request.id), str(self.waitlist_request.id)],
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_waitlist"))
+        queued_messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertIn("1 access emails resent. 1 skipped. 0 failed. Skipped: waitlist-portal@example.com.", queued_messages)
+        active_request.refresh_from_db()
+        self.waitlist_request.refresh_from_db()
+        self.assertEqual(active_request.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(self.waitlist_request.queue_type, AccessRequest.QueueType.WAITLIST)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Whisper is live for you now")
+
+    def test_reviewer_can_bulk_approve_manual_review_records(self):
+        self.client.force_login(self.reviewer)
+        second_manual = AccessRequest.objects.create(
+            email="manual-portal-two@example.com",
+            full_name="Manual Portal Two",
+            state="NY",
+            license_number="LIC-MANUAL-PORTAL-2",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.NO_MATCH,
+            verification_status=AccessRequest.VerificationStatus.NO_MATCH,
+        )
+
+        response = self.client.post(
+            reverse("intake_process_manual_review_requests"),
+            {
+                "bulk_action": "approve",
+                "request_ids": [str(self.manual_request.id), str(second_manual.id)],
+                "decision_reason": "Bulk approval completed.",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_manual_review"))
+        queued_messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertIn("2 requests approved. 0 skipped. 0 failed.", queued_messages)
+        self.manual_request.refresh_from_db()
+        second_manual.refresh_from_db()
+        self.assertEqual(self.manual_request.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(second_manual.status, AccessRequest.Status.COMPLETED)
+        self.assertTrue(AgentUser.objects.get(email=self.manual_request.email).is_active)
+        self.assertTrue(AgentUser.objects.get(email=second_manual.email).is_active)
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_reviewer_can_bulk_reject_manual_review_records(self):
+        self.client.force_login(self.reviewer)
+        second_manual = AccessRequest.objects.create(
+            email="manual-reject-two@example.com",
+            full_name="Manual Reject Two",
+            state="NY",
+            license_number="LIC-MANUAL-REJECT-2",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            reason_code=AccessRequest.Reason.NAME_MISMATCH,
+            verification_status=AccessRequest.VerificationStatus.NAME_MISMATCH,
+        )
+
+        response = self.client.post(
+            reverse("intake_process_manual_review_requests"),
+            {
+                "bulk_action": "reject",
+                "request_ids": [str(self.manual_request.id), str(second_manual.id)],
+                "decision_reason": "Bulk rejection completed.",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_manual_review"))
+        queued_messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertIn("2 requests rejected. 0 skipped. 0 failed.", queued_messages)
+        self.manual_request.refresh_from_db()
+        second_manual.refresh_from_db()
+        self.assertEqual(self.manual_request.decision_status, AccessRequest.DecisionStatus.REJECTED)
+        self.assertEqual(second_manual.decision_status, AccessRequest.DecisionStatus.REJECTED)
+        self.assertEqual(len(mail.outbox), 2)
 
     def test_reviewer_can_reject_manual_review_record(self):
         self.client.force_login(self.reviewer)
@@ -1559,7 +2140,7 @@ class InternalIntakePortalTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("intake_request_detail", args=[self.manual_request.id]))
-        self.assertContains(response, "Request rejected, but notification email could not be sent.")
+        self.assertContains(response, f"0 requests rejected. 0 skipped. 1 failed. Failed: {self.manual_request.email}.")
         self.assertTrue(mock_reject_access_request.called)
 
     @patch("listings.internal_views.approve_access_request", side_effect=lambda **kwargs: ("https://example.com/continue", None, False))
@@ -1573,7 +2154,7 @@ class InternalIntakePortalTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("intake_request_detail", args=[self.manual_request.id]))
-        self.assertContains(response, "Access request verified, but notification email could not be sent.")
+        self.assertContains(response, f"0 requests activated. 0 skipped. 1 failed. Failed: {self.manual_request.email}.")
         self.assertTrue(mock_approve_access_request.called)
 
     def test_waitlist_records_remain_visible_in_waitlist_view(self):
@@ -1584,6 +2165,128 @@ class InternalIntakePortalTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Waitlist Portal")
         self.assertContains(response, "Unsupported state")
+
+    def test_single_row_activate_is_blocked_for_completed_record(self):
+        self.client.force_login(self.reviewer)
+        completed_waitlist = AccessRequest.objects.create(
+            email="blocked-completed@example.com",
+            full_name="Blocked Completed",
+            state="CA",
+            status=AccessRequest.Status.COMPLETED,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("intake_verify_request", args=[completed_waitlist.id]),
+            {"decision_reason": "Should not reactivate."},
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_request_detail", args=[completed_waitlist.id]))
+        self.assertContains(response, "This request can no longer be modified.")
+        completed_waitlist.refresh_from_db()
+        self.assertEqual(completed_waitlist.status, AccessRequest.Status.COMPLETED)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_single_row_activate_is_blocked_for_rejected_record(self):
+        self.client.force_login(self.reviewer)
+        rejected_manual = AccessRequest.objects.create(
+            email="blocked-rejected@example.com",
+            full_name="Blocked Rejected",
+            state="NY",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.REJECTED,
+        )
+
+        response = self.client.post(
+            reverse("intake_verify_request", args=[rejected_manual.id]),
+            {"decision_reason": "Should not reactivate."},
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_request_detail", args=[rejected_manual.id]))
+        self.assertContains(response, "This request can no longer be modified.")
+        rejected_manual.refresh_from_db()
+        self.assertEqual(rejected_manual.decision_status, AccessRequest.DecisionStatus.REJECTED)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_single_row_reject_is_blocked_for_completed_record(self):
+        self.client.force_login(self.reviewer)
+        completed_manual = AccessRequest.objects.create(
+            email="completed-manual@example.com",
+            full_name="Completed Manual",
+            state="NY",
+            status=AccessRequest.Status.COMPLETED,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("intake_reject_request", args=[completed_manual.id]),
+            {"decision_reason": "Should not reject."},
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_request_detail", args=[completed_manual.id]))
+        self.assertContains(response, "This request can no longer be modified.")
+        completed_manual.refresh_from_db()
+        self.assertEqual(completed_manual.decision_status, AccessRequest.DecisionStatus.COMPLETED)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_single_row_reject_is_blocked_for_already_rejected_record(self):
+        self.client.force_login(self.reviewer)
+        rejected_manual = AccessRequest.objects.create(
+            email="already-rejected@example.com",
+            full_name="Already Rejected",
+            state="NY",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.REJECTED,
+        )
+
+        response = self.client.post(
+            reverse("intake_reject_request", args=[rejected_manual.id]),
+            {"decision_reason": "Should not reject again."},
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("intake_request_detail", args=[rejected_manual.id]))
+        self.assertContains(response, "This request can no longer be modified.")
+        rejected_manual.refresh_from_db()
+        self.assertEqual(rejected_manual.decision_status, AccessRequest.DecisionStatus.REJECTED)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_detail_page_hides_actions_for_non_actionable_records(self):
+        self.client.force_login(self.reviewer)
+        completed_waitlist = AccessRequest.objects.create(
+            email="completed-hidden@example.com",
+            full_name="Completed Hidden",
+            state="CA",
+            status=AccessRequest.Status.COMPLETED,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.COMPLETED,
+            completed_at=timezone.now(),
+        )
+        rejected_manual = AccessRequest.objects.create(
+            email="rejected-hidden@example.com",
+            full_name="Rejected Hidden",
+            state="NY",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.REJECTED,
+        )
+
+        completed_response = self.client.get(reverse("intake_request_detail", args=[completed_waitlist.id]))
+        rejected_response = self.client.get(reverse("intake_request_detail", args=[rejected_manual.id]))
+
+        self.assertNotContains(completed_response, ">Activate Access<", html=False)
+        self.assertNotContains(completed_response, ">Reject<", html=False)
+        self.assertNotContains(rejected_response, ">Activate Access<", html=False)
+        self.assertNotContains(rejected_response, ">Reject<", html=False)
 
     def test_internal_portal_does_not_expose_unrelated_listing_data(self):
         self.client.force_login(self.reviewer)
@@ -3549,7 +4252,7 @@ class ListingCheckInTests(TestCase):
             price_max=1200000,
             stage=Listing.Stage.PREMARKET,
             description="First due.",
-            last_confirmed_at=now - timedelta(days=14),
+            last_confirmed_at=now - timedelta(days=7),
             reminder_count=0,
         )
         second_due = Listing.objects.create(
@@ -3584,12 +4287,43 @@ class ListingCheckInTests(TestCase):
         due_ids = {listing.id for listing in get_listings_requiring_checkin(now=now)}
 
         self.assertIn(first_due.id, due_ids)
-        self.assertIn(second_due.id, due_ids)
+        self.assertNotIn(second_due.id, due_ids)
         self.assertNotIn(not_due.id, due_ids)
-        self.assertEqual(get_freshness_state(first_due, now=now), OPTIONAL_UPDATE_STATE)
-        self.assertEqual(get_freshness_state(second_due, now=now), REQUIRED_UPDATE_STATE)
-        self.assertEqual(get_freshness_state_label(first_due, now=now), "Soft Update")
-        self.assertEqual(get_freshness_state_label(second_due, now=now), "Required Update")
+        self.assertEqual(get_reminder_due_at(first_due), get_stale_at(first_due) - timedelta(days=7))
+        self.assertEqual(get_freshness_state_label(first_due, now=now), "Refresh Due")
+        self.assertEqual(get_freshness_state_label(not_due, now=now), "Fresh")
+
+    def test_premarket_stale_deadline_is_earlier_than_private(self):
+        now = timezone.now()
+        premarket_listing = Listing.objects.create(
+            agent=self.agent,
+            title="Premarket Timing",
+            city="Rye",
+            property_type="House",
+            beds=3,
+            baths="2.0",
+            price_min=1000000,
+            price_max=1200000,
+            stage=Listing.Stage.PREMARKET,
+            description="Premarket timing.",
+            last_confirmed_at=now,
+        )
+        private_listing = Listing.objects.create(
+            agent=self.agent,
+            title="Private Timing",
+            city="Rye",
+            property_type="House",
+            beds=3,
+            baths="2.0",
+            price_min=1000000,
+            price_max=1200000,
+            stage=Listing.Stage.PRIVATE,
+            description="Private timing.",
+            last_confirmed_at=now,
+        )
+
+        self.assertLess(get_stale_at(premarket_listing), get_stale_at(private_listing))
+        self.assertLess(get_reminder_due_at(premarket_listing), get_reminder_due_at(private_listing))
 
     def test_grouping_listings_per_agent_email(self):
         other_agent = create_agent(
@@ -3630,7 +4364,7 @@ class ListingCheckInTests(TestCase):
             price_max=2300000,
             stage=Listing.Stage.PREMARKET,
             description="Second reminder listing.",
-            last_confirmed_at=now - timedelta(days=14),
+            last_confirmed_at=now - timedelta(days=7),
         )
 
         call_command("send_listing_checkins")
@@ -3646,11 +4380,11 @@ class ListingCheckInTests(TestCase):
         self.assertEqual(second_listing.reminder_count, 1)
         self.assertIsNotNone(self.listing.last_reminder_sent_at)
 
-    def test_optional_update_listing_is_not_reselected_daily_after_optional_reminder(self):
+    def test_reminder_is_not_sent_before_seven_day_threshold(self):
         now = timezone.now()
         listing = Listing.objects.create(
             agent=self.agent,
-            title="Optional Listing",
+            title="Not Yet Due",
             city="Rye",
             property_type="House",
             beds=3,
@@ -3658,8 +4392,26 @@ class ListingCheckInTests(TestCase):
             price_min=1000000,
             price_max=1200000,
             stage=Listing.Stage.PREMARKET,
-            description="Optional reminder cadence.",
-            last_confirmed_at=now - timedelta(days=14),
+            description="Not due yet.",
+            last_confirmed_at=now - timedelta(days=6),
+        )
+
+        self.assertFalse(should_send_checkin_for_listing(listing, now=now))
+
+    def test_single_deadline_listing_is_not_reselected_daily_after_reminder(self):
+        now = timezone.now()
+        listing = Listing.objects.create(
+            agent=self.agent,
+            title="Refresh Listing",
+            city="Rye",
+            property_type="House",
+            beds=3,
+            baths="2.0",
+            price_min=1000000,
+            price_max=1200000,
+            stage=Listing.Stage.PREMARKET,
+            description="Reminder cadence.",
+            last_confirmed_at=now - timedelta(days=7),
         )
 
         self.assertTrue(should_send_checkin_for_listing(listing, now=now))
@@ -3670,35 +4422,11 @@ class ListingCheckInTests(TestCase):
         next_day = now + timedelta(days=1)
         self.assertFalse(should_send_checkin_for_listing(listing, now=next_day))
 
-    def test_required_update_listing_is_not_reselected_daily_after_required_reminder(self):
-        now = timezone.now()
-        listing = Listing.objects.create(
-            agent=self.agent,
-            title="Required Listing",
-            city="Bronxville",
-            property_type="House",
-            beds=4,
-            baths="3.0",
-            price_min=2000000,
-            price_max=2200000,
-            stage=Listing.Stage.PRIVATE,
-            description="Required reminder cadence.",
-            last_confirmed_at=now - timedelta(days=21),
-        )
-
-        self.assertTrue(should_send_checkin_for_listing(listing, now=now))
-        listing.last_reminder_sent_at = now
-        listing.reminder_count = 2
-        listing.save(update_fields=["last_reminder_sent_at", "reminder_count"])
-
-        next_day = now + timedelta(days=1)
-        self.assertFalse(should_send_checkin_for_listing(listing, now=next_day))
-
     @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-    def test_grouped_reminder_email_includes_mixed_listing_states(self):
+    def test_grouped_reminder_email_includes_stale_deadline(self):
         now = timezone.now()
         Listing.objects.filter(pk=self.listing.pk).update(last_confirmed_at=now - timedelta(days=14))
-        required_listing = Listing.objects.create(
+        second_due_listing = Listing.objects.create(
             agent=self.agent,
             title="Rye Colonial",
             city="Rye",
@@ -3708,21 +4436,45 @@ class ListingCheckInTests(TestCase):
             price_min=2200000,
             price_max=2300000,
             stage=Listing.Stage.PRIVATE,
-            description="Required update listing.",
-            last_confirmed_at=now - timedelta(days=21),
+            description="Refresh due listing.",
+            last_confirmed_at=now - timedelta(days=14),
         )
 
         call_command("send_listing_checkins")
 
         self.assertEqual(len(mail.outbox), 1)
         body = mail.outbox[0].body
-        self.assertIn("State: Soft Update", body)
-        self.assertIn("State: Required Update", body)
-        self.assertIn("Last validated: Required Update", body)
-        self.assertIn("Update:", body)
-        self.assertIn("Validate Now:", body)
-        self.assertIn(required_listing.title, body)
+        self.assertIn("These opportunities will expire soon unless you refresh them.", body)
+        self.assertIn("Stale on:", body)
+        self.assertIn("Refresh Listing:", body)
+        self.assertNotIn("Moved to MLS:", body)
+        self.assertIn(second_due_listing.title, body)
         self.assertIn(self.listing.title, body)
+
+    @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_grouped_email_renders_mixed_premarket_and_private_actions(self):
+        now = timezone.now()
+        premarket_listing = Listing.objects.create(
+            agent=self.agent,
+            title="Premarket Mixed",
+            city="Rye",
+            property_type="House",
+            beds=3,
+            baths="2.0",
+            price_min=1000000,
+            price_max=1200000,
+            stage=Listing.Stage.PREMARKET,
+            description="Premarket mixed.",
+            last_confirmed_at=now - timedelta(days=7),
+        )
+        Listing.objects.filter(pk=self.listing.pk).update(last_confirmed_at=now - timedelta(days=14))
+
+        call_command("send_listing_checkins")
+
+        body = mail.outbox[0].body
+        self.assertIn("Still Premarket:", body)
+        self.assertIn("Moved to MLS:", body)
+        self.assertIn("Refresh Listing:", body)
 
     def test_confirmation_endpoint_resets_listing(self):
         Listing.objects.filter(pk=self.listing.pk).update(
@@ -3738,7 +4490,7 @@ class ListingCheckInTests(TestCase):
         self.assertEqual(self.listing.reminder_count, 0)
         self.assertIsNone(self.listing.last_reminder_sent_at)
         self.assertTrue(self.listing.is_active)
-        self.assertContains(response, "Thanks! Your opportunity has been confirmed.")
+        self.assertContains(response, "Thanks! Your opportunity has been refreshed.")
 
     def test_removal_endpoint_marks_listing_removed(self):
         token = build_signed_listing_token(self.listing, "remove")
@@ -3752,7 +4504,82 @@ class ListingCheckInTests(TestCase):
         self.assertIsNotNone(self.listing.removed_at)
         self.assertContains(response, "Your opportunity has been removed.")
 
-    def test_required_update_listings_become_inactive_after_grace_period(self):
+    def test_remove_after_stale_deadline_shows_expired_page(self):
+        stale_listing = Listing.objects.create(
+            agent=self.agent,
+            title="Expired Remove Listing",
+            city="Rye",
+            property_type="House",
+            beds=4,
+            baths="3.0",
+            price_min=2100000,
+            price_max=2300000,
+            stage=Listing.Stage.PRIVATE,
+            description="Expired remove link.",
+            last_confirmed_at=timezone.now() - timedelta(days=21),
+        )
+        token = build_signed_listing_token(stale_listing, "remove")
+
+        response = self.client.get(reverse("remove_listing_from_email", args=[token]))
+
+        self.assertEqual(response.status_code, 410)
+        stale_listing.refresh_from_db()
+        self.assertFalse(stale_listing.is_active)
+        self.assertEqual(stale_listing.status, Listing.Status.STALE)
+        self.assertContains(response, "This refresh link has expired", status_code=410)
+
+    def test_premarket_moved_to_mls_action_removes_listing_with_distinct_reason(self):
+        listing = Listing.objects.create(
+            agent=self.agent,
+            title="Moved To MLS",
+            city="Rye",
+            property_type="House",
+            beds=4,
+            baths="3.0",
+            price_min=2100000,
+            price_max=2300000,
+            stage=Listing.Stage.PREMARKET,
+            description="Moved to MLS action.",
+            last_confirmed_at=timezone.now() - timedelta(days=7),
+        )
+        token = build_signed_listing_token(listing, "moved_to_mls")
+
+        response = self.client.get(reverse("move_listing_to_mls_from_email", args=[token]))
+
+        self.assertEqual(response.status_code, 200)
+        listing.refresh_from_db()
+        self.assertFalse(listing.is_active)
+        self.assertEqual(listing.status, Listing.Status.REMOVED_BY_AGENT)
+        self.assertEqual(listing.removed_reason, Listing.REMOVED_REASON_MOVED_TO_MLS)
+        self.assertContains(response, "moved to MLS")
+
+    @patch("listings.views.send_collection_match_alerts_for_listing")
+    def test_premarket_moved_to_mls_after_stale_deadline_shows_expired_result(self, mock_send_collection_match_alerts):
+        listing = Listing.objects.create(
+            agent=self.agent,
+            title="Expired MLS Move",
+            city="Rye",
+            property_type="House",
+            beds=4,
+            baths="3.0",
+            price_min=2100000,
+            price_max=2300000,
+            stage=Listing.Stage.PREMARKET,
+            description="Expired MLS move.",
+            last_confirmed_at=timezone.now() - timedelta(days=14),
+        )
+        token = build_signed_listing_token(listing, "moved_to_mls")
+
+        response = self.client.get(reverse("move_listing_to_mls_from_email", args=[token]))
+
+        self.assertEqual(response.status_code, 410)
+        listing.refresh_from_db()
+        self.assertFalse(listing.is_active)
+        self.assertEqual(listing.status, Listing.Status.STALE)
+        self.assertContains(response, "This refresh link has expired", status_code=410)
+        self.assertFalse(mock_send_collection_match_alerts.called)
+
+    def test_no_response_causes_stale_takedown_at_deadline(self):
         stale_listing = Listing.objects.create(
             agent=self.agent,
             title="Expired Listing",
@@ -3764,7 +4591,7 @@ class ListingCheckInTests(TestCase):
             price_max=3200000,
             stage=Listing.Stage.PRIVATE,
             description="Expired freshness window.",
-            last_confirmed_at=timezone.now() - timedelta(days=24),
+            last_confirmed_at=timezone.now() - timedelta(days=21),
         )
 
         deactivated_count = deactivate_stale_listings()
@@ -3798,7 +4625,8 @@ class ListingCheckInTests(TestCase):
         self.assertFalse(stale_listing.is_active)
         self.assertEqual(stale_listing.status, Listing.Status.STALE)
 
-    def test_confirm_endpoint_can_reactivate_stale_listing(self):
+    @patch("listings.views.send_collection_match_alerts_for_listing")
+    def test_confirm_after_stale_deadline_shows_expired_page_and_does_not_reactivate(self, mock_send_collection_match_alerts):
         stale_listing = Listing.objects.create(
             agent=self.agent,
             title="Reactivatable Listing",
@@ -3810,28 +4638,23 @@ class ListingCheckInTests(TestCase):
             price_max=2300000,
             stage=Listing.Stage.PRIVATE,
             description="Was stale but can return live.",
-            last_confirmed_at=timezone.now() - timedelta(days=24),
+            last_confirmed_at=timezone.now() - timedelta(days=21),
         )
-        stale_listing.mark_stale()
         token = build_signed_listing_token(stale_listing, "confirm")
 
         response = self.client.get(reverse("confirm_listing_from_email", args=[token]))
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 410)
         stale_listing.refresh_from_db()
-        self.assertTrue(stale_listing.is_active)
-        self.assertEqual(stale_listing.status, Listing.Status.ACTIVE)
-        self.assertIsNone(stale_listing.removed_at)
-        self.assertEqual(stale_listing.reminder_count, 0)
-        self.assertContains(response, "Thanks! Your opportunity has been confirmed.")
+        self.assertFalse(stale_listing.is_active)
+        self.assertEqual(stale_listing.status, Listing.Status.STALE)
+        self.assertContains(response, "This refresh link has expired", status_code=410)
+        self.assertFalse(mock_send_collection_match_alerts.called)
 
-        feed_response = self.client.get(reverse("feed"))
-        self.assertContains(feed_response, "Reactivatable Listing")
-
-    def test_soft_update_listings_remain_live(self):
-        soft_listing = Listing.objects.create(
+    def test_listing_remains_live_before_stale_deadline(self):
+        live_listing = Listing.objects.create(
             agent=self.agent,
-            title="Soft Update Listing",
+            title="Live Listing",
             city="Larchmont",
             property_type="House",
             beds=4,
@@ -3840,37 +4663,15 @@ class ListingCheckInTests(TestCase):
             price_max=2000000,
             stage=Listing.Stage.PRIVATE,
             description="Still live.",
-            last_confirmed_at=timezone.now() - timedelta(days=16),
+            last_confirmed_at=timezone.now() - timedelta(days=20),
         )
 
         deactivated_count = deactivate_stale_listings()
 
         self.assertEqual(deactivated_count, 0)
-        soft_listing.refresh_from_db()
-        self.assertTrue(soft_listing.is_active)
-        self.assertEqual(soft_listing.status, Listing.Status.ACTIVE)
-
-    def test_required_update_listing_stays_live_during_three_day_grace_period(self):
-        grace_listing = Listing.objects.create(
-            agent=self.agent,
-            title="Grace Period Listing",
-            city="Rye",
-            property_type="House",
-            beds=4,
-            baths="3.0",
-            price_min=2100000,
-            price_max=2300000,
-            stage=Listing.Stage.PRIVATE,
-            description="Still within required-update grace period.",
-            last_confirmed_at=timezone.now() - timedelta(days=22),
-        )
-
-        deactivated_count = deactivate_stale_listings()
-
-        self.assertEqual(deactivated_count, 0)
-        grace_listing.refresh_from_db()
-        self.assertTrue(grace_listing.is_active)
-        self.assertEqual(grace_listing.status, Listing.Status.ACTIVE)
+        live_listing.refresh_from_db()
+        self.assertTrue(live_listing.is_active)
+        self.assertEqual(live_listing.status, Listing.Status.ACTIVE)
 
     @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("listings.checkins.send_email", side_effect=RuntimeError("send failed"))
@@ -3886,7 +4687,7 @@ class ListingCheckInTests(TestCase):
             price_max=3200000,
             stage=Listing.Stage.PRIVATE,
             description="Expired freshness window.",
-            last_confirmed_at=timezone.now() - timedelta(days=24),
+            last_confirmed_at=timezone.now() - timedelta(days=21),
         )
         Listing.objects.filter(pk=self.listing.pk).update(last_confirmed_at=timezone.now() - timedelta(days=14))
 
@@ -3910,12 +4711,12 @@ class ListingCheckInTests(TestCase):
             price_max=3200000,
             stage=Listing.Stage.PRIVATE,
             description="Expired freshness window.",
-            last_confirmed_at=timezone.now() - timedelta(days=24),
+            last_confirmed_at=timezone.now() - timedelta(days=21),
         )
         Listing.objects.filter(pk=self.listing.pk).update(last_confirmed_at=timezone.now() - timedelta(days=14))
-        required_listing = Listing.objects.create(
+        due_listing = Listing.objects.create(
             agent=self.agent,
-            title="Required Listing",
+            title="Due Listing",
             city="Rye",
             property_type="House",
             beds=4,
@@ -3923,8 +4724,8 @@ class ListingCheckInTests(TestCase):
             price_min=2200000,
             price_max=2300000,
             stage=Listing.Stage.PRIVATE,
-            description="Required update listing.",
-            last_confirmed_at=timezone.now() - timedelta(days=21),
+            description="Refresh due listing.",
+            last_confirmed_at=timezone.now() - timedelta(days=14),
         )
         out = StringIO()
 
@@ -3933,13 +4734,12 @@ class ListingCheckInTests(TestCase):
         output = out.getvalue()
         self.assertIn("Dry run: listing check-in emails would be sent to:", output)
         self.assertIn("checkin@example.com", output)
-        self.assertIn("Soft Update", output)
-        self.assertIn("Required Update", output)
+        self.assertIn("Refresh Due", output)
         self.assertNotIn("Expired Listing", output)
         stale_listing.refresh_from_db()
-        required_listing.refresh_from_db()
+        due_listing.refresh_from_db()
         self.assertTrue(stale_listing.is_active)
-        self.assertTrue(required_listing.is_active)
+        self.assertTrue(due_listing.is_active)
 
     @override_settings(EMAIL_PROVIDER="smtp", EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_email_provider_abstraction_uses_selected_provider(self):
@@ -3982,8 +4782,8 @@ class ListingCheckInTests(TestCase):
         output = out.getvalue()
         self.assertIn("Dry run: listing check-in emails would be sent to:", output)
         self.assertIn("checkin@example.com", output)
-        self.assertIn("4 Bed / 3.0 Bath in Scarsdale | Scarsdale | Private | Soft Update", output)
-        self.assertIn(f"{second_listing.title} | Bronxville | Private | Soft Update", output)
+        self.assertIn("4 Bed / 3.0 Bath in Scarsdale | Scarsdale | Private | Refresh Due", output)
+        self.assertIn(f"{second_listing.title} | Bronxville | Private | Refresh Due", output)
         self.assertEqual(len(mail.outbox), 0)
 
 
@@ -4028,19 +4828,20 @@ class EmailRenderingTests(TestCase):
                     "descriptor": "Rye Opportunity — Rye — Private — $1M–$2M",
                     "confirm_url": "https://example.com/confirm",
                     "remove_url": "https://example.com/remove",
-                    "last_validated_label": "Required Update",
-                    "is_required": True,
-                    "primary_action_label": "Validate Now",
+                    "last_validated_label": "Mar 1, 2026",
+                    "stale_at_label": "Mar 8, 2026",
+                    "primary_action_label": "Refresh Listing",
                 }
             ],
         )
 
         self.assertEqual(subject, "Whisper Opportunity Check-In")
         self.assertIn("Rye Opportunity", html_body)
-        self.assertIn("Are these opportunities still active?", html_body)
+        self.assertIn("These opportunities will expire soon unless you refresh them.", html_body)
         self.assertIn("https://example.com/confirm", html_body)
         self.assertIn("https://example.com/remove", text_body)
-        self.assertIn("Last validated: Required Update", text_body)
+        self.assertIn("Last validated: Mar 1, 2026", text_body)
+        self.assertIn("Stale on: Mar 8, 2026", text_body)
 
 
 class ListingFreshnessTests(TestCase):

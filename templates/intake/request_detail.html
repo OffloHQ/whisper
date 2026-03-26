@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Intake Request | Whisper{% endblock %}
+{% block title %}Admin Request | Whisper{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
@@ -10,7 +10,7 @@
             <h1 style="margin:0;">{{ access_request.full_name|default:access_request.email }}</h1>
             <p class="muted" style="margin:0.35rem 0 0;">{{ access_request.email }}</p>
         </div>
-        <a href="{% if access_request.queue_type == 'manual_review' %}{% url 'intake_manual_review' %}{% else %}{% url 'intake_waitlist' %}{% endif %}" style="text-decoration:none;">Back</a>
+        <a href="{{ return_to_queue_url }}" style="text-decoration:none;">Back</a>
     </div>
     <div class="card" style="margin:0;">
         <div>Status: {{ access_request.get_decision_status_display }}</div>
@@ -38,20 +38,26 @@
             <pre style="white-space:pre-wrap; overflow-wrap:anywhere; margin:0.75rem 0 0;">{{ access_request.verification_payload }}</pre>
         </div>
     {% endif %}
-    {% if access_request.queue_type == 'manual_review' %}
+    {% if can_activate_request or can_reject_request %}
         <div style="display:grid; gap:0.75rem; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
-            <form method="post" action="{% url 'intake_verify_request' access_request.id %}" class="card" style="margin:0;">
-                {% csrf_token %}
-                <label for="verify-reason">Review note</label>
-                <textarea id="verify-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
-                <button type="submit" style="margin-top:0.75rem;">Verify</button>
-            </form>
-            <form method="post" action="{% url 'intake_reject_request' access_request.id %}" class="card" style="margin:0;">
-                {% csrf_token %}
-                <label for="reject-reason">Rejection reason</label>
-                <textarea id="reject-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
-                <button type="submit" style="margin-top:0.75rem;">Reject</button>
-            </form>
+            {% if can_activate_request %}
+                <form method="post" action="{% url 'intake_verify_request' access_request.id %}" class="card" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                    <label for="verify-reason">{% if access_request.queue_type == 'waitlist' %}Activation note{% else %}Review note{% endif %}</label>
+                    <textarea id="verify-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
+                    <button type="submit" style="margin-top:0.75rem;">Activate Access</button>
+                </form>
+            {% endif %}
+            {% if can_reject_request %}
+                <form method="post" action="{% url 'intake_reject_request' access_request.id %}" class="card" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                    <label for="reject-reason">Rejection reason</label>
+                    <textarea id="reject-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
+                    <button type="submit" style="margin-top:0.75rem;">Reject</button>
+                </form>
+            {% endif %}
         </div>
     {% endif %}
 </section>

@@ -302,6 +302,8 @@ class Listing(models.Model):
         REMOVED_BY_AGENT = "removed_by_agent", "Removed by agent"
         STALE = "stale", "Stale"
 
+    REMOVED_REASON_MOVED_TO_MLS = "moved_to_mls"
+
     agent = models.ForeignKey(
         AgentUser,
         on_delete=models.CASCADE,
@@ -381,6 +383,13 @@ class Listing(models.Model):
         self.status = self.Status.STALE
         self.removed_at = timezone.now()
         self.removed_reason = self.Status.STALE
+        self.save(update_fields=["is_active", "status", "removed_at", "removed_reason"])
+
+    def mark_moved_to_mls(self):
+        self.is_active = False
+        self.status = self.Status.REMOVED_BY_AGENT
+        self.removed_at = timezone.now()
+        self.removed_reason = self.REMOVED_REASON_MOVED_TO_MLS
         self.save(update_fields=["is_active", "status", "removed_at", "removed_reason"])
 
 

@@ -1,0 +1,408 @@
+<style>
+.admin-controls {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.admin-filter-row,
+.admin-bulk-row,
+.admin-pagination {
+    display: grid;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.admin-filter-row {
+    grid-template-columns: minmax(220px, 1.4fr) minmax(160px, 0.9fr) minmax(170px, 0.9fr) minmax(170px, 0.9fr) auto auto;
+}
+
+.admin-bulk-row {
+    grid-template-columns: minmax(220px, 260px) minmax(260px, 1fr) auto;
+    align-items: end;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 0.75rem 0.65rem;
+    border-bottom: 1px solid rgba(31, 26, 20, 0.08);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.admin-table th {
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.admin-table th a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.admin-table th:first-child,
+.admin-table td:first-child {
+    width: 44px;
+    text-align: center;
+}
+
+.admin-table-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.admin-table-actions form {
+    margin: 0;
+}
+
+.status-pill {
+    display: inline-flex;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(31, 26, 20, 0.08);
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.status-pill.waitlist {
+    background: rgba(166, 112, 34, 0.12);
+    color: #7a4d10;
+}
+
+.status-pill.manual_review {
+    background: rgba(62, 84, 135, 0.12);
+    color: #2c467d;
+}
+
+.status-pill.completed,
+.status-pill.active {
+    background: rgba(41, 114, 74, 0.14);
+    color: #2d6b45;
+}
+
+.status-pill.rejected {
+    background: rgba(145, 54, 54, 0.12);
+    color: #8a2f2f;
+}
+
+.status-pill.default {
+    background: rgba(31, 26, 20, 0.08);
+    color: inherit;
+}
+
+.admin-empty-row td {
+    color: var(--muted);
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+.admin-empty-row a,
+.admin-meta a {
+    text-decoration: none;
+}
+
+.admin-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.admin-pagination {
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+}
+
+.admin-pagination-nav {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.admin-pagination-nav span {
+    color: var(--muted);
+}
+
+@media (max-width: 1100px) {
+    .admin-filter-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .admin-bulk-row,
+    .admin-pagination {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-meta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 720px) {
+    .admin-filter-row {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<section class="card" style="display:grid; gap:1rem; margin:2rem auto 0;">
+    <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center;">
+        <div>
+            <h1 style="margin:0;">{{ queue_name }}</h1>
+            <p class="muted" style="margin:0.35rem 0 0;">{{ queue_subtitle }}</p>
+        </div>
+        <a href="{% url 'intake_home' %}" style="text-decoration:none;">Back</a>
+    </div>
+
+    <form method="get" class="admin-controls">
+        <div class="admin-filter-row">
+            <div>
+                <label for="queue-search">Search</label>
+                <input id="queue-search" type="search" name="q" value="{{ search_query }}" placeholder="Name or email">
+            </div>
+
+            <div>
+                <label for="queue-state">State</label>
+                <select id="queue-state" name="state">
+                    <option value="">All states</option>
+                    {% for option in state_options %}
+                        <option value="{{ option.value }}"{% if selected_state == option.value %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label for="queue-status">Status</label>
+                <select id="queue-status" name="status">
+                    <option value="">{{ queue_name }} Queue</option>
+                    {% for value, label in status_options %}
+                        <option value="{{ value }}"{% if selected_status == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label for="queue-sort">Sort</label>
+                <select id="queue-sort" name="sort">
+                    {% for option in sort_options %}
+                        <option value="{{ option.value }}"{% if selected_sort == option.value %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <button type="submit">Apply Filters</button>
+            </div>
+
+            <div>
+                {% if filters_active %}
+                    <a href="{{ clear_filters_url }}" style="text-decoration:none;">Clear Filters</a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+
+    <form method="post" action="{% url bulk_form_action %}" style="display:grid; gap:0.75rem;">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+
+        <div class="card" style="margin:0;">
+            <div class="admin-bulk-row">
+                <div>
+                    <label for="bulk-action">Bulk Action</label>
+                    <select id="bulk-action" name="bulk_action">
+                        {% for action in bulk_actions %}
+                            <option value="{{ action.value }}">{{ action.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="bulk-note">Note</label>
+                    <input id="bulk-note" type="text" name="decision_reason" placeholder="{{ default_note_placeholder }}">
+                </div>
+
+                <div>
+                    <button type="submit">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin:0; overflow-x:auto;">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>
+                            <input type="checkbox" id="select-all-header" aria-label="Select all rows">
+                        </th>
+                        <th><a href="{{ sort_name_query }}">Name</a></th>
+                        <th>Email</th>
+                        <th><a href="{{ sort_state_query }}">State</a></th>
+                        <th><a href="{{ sort_status_query }}">Status</a></th>
+                        <th>Last Email</th>
+                        <th>Reason</th>
+                        <th><a href="{{ sort_date_query }}">Date</a></th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for access_request in requests %}
+                        <tr>
+                            <td>
+                                <input
+                                    type="checkbox"
+                                    name="request_ids"
+                                    value="{{ access_request.id }}"
+                                    class="js-request-checkbox"
+                                    aria-label="Select {{ access_request.email }}"
+                                >
+                            </td>
+                            <td>{{ access_request.full_name|default:"-" }}</td>
+                            <td>{{ access_request.email }}</td>
+                            <td>{{ access_request.display_state|default:"-" }}</td>
+                            <td>
+                                <span class="status-pill {{ access_request.display_status_class|default:'default' }}">
+                                    {{ access_request.display_status }}
+                                </span>
+                            </td>
+                            <td>{{ access_request.last_email_display }}</td>
+                            <td>{{ access_request.get_reason_code_display|default:"-" }}</td>
+                            <td>{{ access_request.updated_at|date:"M j, Y" }}</td>
+                            <td>
+                                <div class="admin-table-actions">
+                                    {% if show_reject_action %}
+                                        {% if access_request.queue_type == 'manual_review' %}
+                                            <form method="post" action="{% url 'intake_verify_request' access_request.id %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                <button type="submit">Approve / Activate</button>
+                                            </form>
+
+                                            <form method="post" action="{% url 'intake_reject_request' access_request.id %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                <button type="submit">Reject</button>
+                                            </form>
+                                        {% endif %}
+                                    {% else %}
+                                        {% if access_request.queue_type == 'waitlist' or access_request.queue_type == 'manual_review' %}
+                                            <form method="post" action="{% url 'intake_verify_request' access_request.id %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                <button type="submit">Activate</button>
+                                            </form>
+                                        {% endif %}
+
+                                        {% if show_invite_action and access_request.can_resend_access_email %}
+                                            <form method="post" action="{% url 'intake_activate_waitlist_requests' %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                <input type="hidden" name="bulk_action" value="invite">
+                                                <input type="hidden" name="request_ids" value="{{ access_request.id }}">
+                                                <button type="submit">Resend Access Email</button>
+                                            </form>
+                                        {% endif %}
+                                    {% endif %}
+
+                                    <a href="{% url 'intake_request_detail' access_request.id %}?next={{ return_to_queue_url|urlencode }}">Open</a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr class="admin-empty-row">
+                            <td colspan="9">
+                                {{ empty_message }}
+                                {% if filters_active %}
+                                    <a href="{{ clear_filters_url }}">Clear filters</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+
+    <div class="admin-meta">
+        <div>
+            {% if total_count %}
+                Showing {{ showing_start }}-{{ showing_end }} of {{ total_count }}
+            {% else %}
+                Showing 0 of 0
+            {% endif %}
+        </div>
+
+        <div>
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </div>
+    </div>
+
+    <div class="admin-pagination">
+        <div></div>
+        <div></div>
+        <div class="admin-pagination-nav">
+            {% if page_obj.has_previous %}
+                <a href="{{ prev_page_query }}">Previous</a>
+            {% else %}
+                <span>Previous</span>
+            {% endif %}
+
+            {% if page_obj.has_next %}
+                <a href="{{ next_page_query }}">Next</a>
+            {% else %}
+                <span>Next</span>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<script>
+(() => {
+    const selectAll = document.getElementById("select-all-header");
+    const checkboxes = Array.from(document.querySelectorAll(".js-request-checkbox"));
+
+    if (!selectAll) return;
+
+    const syncChildren = (checked) => {
+        checkboxes.forEach((checkbox) => {
+            checkbox.checked = checked;
+        });
+    };
+
+    const syncHeader = () => {
+        if (!checkboxes.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+
+        const checkedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
+        selectAll.checked = checkedCount === checkboxes.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+    };
+
+    selectAll.addEventListener("change", (event) => {
+        syncChildren(event.target.checked);
+        syncHeader();
+    });
+
+    checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", syncHeader);
+    });
+
+    syncHeader();
+})();
+</script>

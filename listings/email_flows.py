@@ -4,12 +4,14 @@ from django.urls import reverse
 
 from services.email import send_email
 from services.email.messages import (
+    build_access_request_activation_email,
     build_access_request_signup_email,
     build_access_request_manual_approval_email,
     build_access_request_rejection_email,
     build_access_request_waitlist_email,
     build_account_verification_email,
 )
+from .auth_links import build_auth_access_url, create_auth_access_token
 
 
 EMAIL_VERIFICATION_SALT = "agent-email-verification"
@@ -121,3 +123,16 @@ def send_access_request_waitlist_email(*, access_request):
         html_body=html_body,
         text_body=text_body,
     )
+
+
+def send_access_request_activation_email(request, *, access_request, agent):
+    auth_access_token = create_auth_access_token(agent=agent, email=access_request.email)
+    sign_in_url = build_auth_access_url(request, auth_access_token)
+    subject, html_body, text_body = build_access_request_activation_email(sign_in_url=sign_in_url)
+    send_email(
+        to_email=access_request.email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+    return auth_access_token, sign_in_url

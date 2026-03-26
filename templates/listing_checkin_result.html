@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="card">
-    <h1>Whisper Opportunity Check-In</h1>
+    <h1>{{ title|default:"Whisper Opportunity Check-In" }}</h1>
     <p>{{ message }}</p>
 </div>
 {% endblock %}

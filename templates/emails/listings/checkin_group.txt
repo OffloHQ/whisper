@@ -2,13 +2,14 @@ Hi {{ agent_name }},
 
 Just a quick Whisper check-in.
 
-Are these opportunities still active?
+These opportunities will expire soon unless you refresh them.
 
 {% for listing in listings %}{{ listing.descriptor }}
-State: {{ listing.state_label }}
 Last validated: {{ listing.last_validated_label }}
+Stale on: {{ listing.stale_at_label }}
 {{ listing.primary_action_label }}: {{ listing.confirm_url }}
-NO remove opportunity: {{ listing.remove_url }}
+{% if listing.show_moved_to_mls_action %}Moved to MLS: {{ listing.moved_to_mls_url }}
+{% endif %}NO remove opportunity: {{ listing.remove_url }}
 {% if not forloop.last %}
 
 {% endif %}{% endfor %}

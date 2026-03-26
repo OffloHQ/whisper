@@ -1,4 +1,5 @@
 import json
+import logging
 from urllib import error, parse, request
 
 from django.conf import settings
@@ -13,6 +14,8 @@ from listings.verification.utils import (
     parse_provider_date,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class NYSoda3Provider(BaseVerificationProvider):
     provider_name = "ny_soda3"
@@ -21,7 +24,20 @@ class NYSoda3Provider(BaseVerificationProvider):
     def verify(self, *, full_name: str, state: str, license_number: str) -> VerificationResult:
         normalized_name = normalize_name_for_comparison(full_name)
         normalized_license_number = normalize_license_number(license_number)
-        if not settings.NY_OPEN_DATA_BASE_URL or not settings.NY_REAL_ESTATE_DATASET_ID:
+        missing_settings = [
+            setting_name
+            for setting_name, setting_value in (
+                ("NY_OPEN_DATA_BASE_URL", settings.NY_OPEN_DATA_BASE_URL),
+                ("NY_REAL_ESTATE_DATASET_ID", settings.NY_REAL_ESTATE_DATASET_ID),
+                ("NY_LICENSE_API_APP_TOKEN", settings.NY_LICENSE_API_APP_TOKEN),
+            )
+            if not setting_value
+        ]
+        if missing_settings:
+            logger.warning(
+                "NY verification provider is not configured. Missing settings: %s",
+                ", ".join(missing_settings),
+            )
             return VerificationResult(
                 success=False,
                 status=VerificationStatus.PROVIDER_ERROR,
@@ -31,7 +47,7 @@ class NYSoda3Provider(BaseVerificationProvider):
                 normalized_submitted_name=normalized_name,
                 provider=self.provider_name,
                 raw_payload={},
-                reason="NY verification provider is not configured.",
+                reason=f"NY verification provider is not configured. Missing settings: {', '.join(missing_settings)}.",
                 requires_manual_review=True,
             )
 
@@ -42,15 +58,21 @@ class NYSoda3Provider(BaseVerificationProvider):
             }
         )
         api_url = f"{settings.NY_OPEN_DATA_BASE_URL.rstrip('/')}/{settings.NY_REAL_ESTATE_DATASET_ID}.json?{query}"
-        headers = {}
-        if settings.NY_LICENSE_API_APP_TOKEN:
-            headers["X-App-Token"] = settings.NY_LICENSE_API_APP_TOKEN
+        headers = {
+            "X-App-Token": settings.NY_LICENSE_API_APP_TOKEN,
+        }
         req = request.Request(api_url, headers=headers)
 
         try:
             with request.urlopen(req, timeout=settings.NY_LICENSE_API_TIMEOUT) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (error.HTTPError, error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            logger.exception(
+                "NY verification request failed for license_number=%s state=%s provider=%s",
+                normalized_license_number,
+                state,
+                self.provider_name,
+            )
             return VerificationResult(
                 success=False,
                 status=VerificationStatus.PROVIDER_ERROR,

@@ -4,6 +4,7 @@ from django import forms
 
 from .models import Collection, Listing
 from .utils import PRICE_INPUT_ERROR, get_town_area_choices, parse_price_input
+from .verification.utils import normalize_state_code
 
 
 IDENTIFIER_BLOCKING_ERROR = (
@@ -266,7 +267,7 @@ class SignupIdentityForm(forms.Form):
     license_number = forms.CharField(label="State license number", max_length=100)
 
     def clean_state(self):
-        return self.cleaned_data["state"].strip().upper()
+        return normalize_state_code(self.cleaned_data["state"])
 
 
 class SignupContactForm(forms.Form):

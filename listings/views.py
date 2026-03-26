@@ -17,7 +17,7 @@ from .auth_links import (
     get_valid_auth_access_token,
     send_magic_sign_in_link,
 )
-from .checkins import load_signed_listing_token
+from .checkins import is_listing_stale, load_signed_listing_token
 from .collection_alerts import send_collection_match_alerts_for_listing
 from .email_flows import (
     build_access_request_signup_token,
@@ -1661,6 +1661,19 @@ def confirm_listing_from_email(request, token):
             status=404,
         )
 
+    if is_listing_stale(listing):
+        if listing.is_active and listing.status == Listing.Status.ACTIVE and listing.removed_at is None:
+            listing.mark_stale()
+        return render(
+            request,
+            "listing_checkin_result.html",
+            {
+                "title": "Opportunity Check-In Expired",
+                "message": "This refresh link has expired because the opportunity is no longer active on Whisper.",
+            },
+            status=410,
+        )
+
     was_inactive = not listing.is_active
     listing.mark_confirmed()
     if was_inactive:
@@ -1668,7 +1681,10 @@ def confirm_listing_from_email(request, token):
     return render(
         request,
         "listing_checkin_result.html",
-        {"message": "Thanks! Your opportunity has been confirmed."},
+        {
+            "title": "Opportunity Refreshed",
+            "message": "Thanks! Your opportunity has been refreshed.",
+        },
     )
 
 
@@ -1692,11 +1708,71 @@ def remove_listing_from_email(request, token):
             status=404,
         )
 
+    if is_listing_stale(listing):
+        if listing.is_active and listing.status == Listing.Status.ACTIVE and listing.removed_at is None:
+            listing.mark_stale()
+        return render(
+            request,
+            "listing_checkin_result.html",
+            {
+                "title": "Opportunity Check-In Expired",
+                "message": "This refresh link has expired because the opportunity is no longer active on Whisper.",
+            },
+            status=410,
+        )
+
     listing.mark_removed_by_agent()
     return render(
         request,
         "listing_checkin_result.html",
-        {"message": "Your opportunity has been removed."},
+        {
+            "title": "Opportunity Removed",
+            "message": "Your opportunity has been removed.",
+        },
+    )
+
+
+def move_listing_to_mls_from_email(request, token):
+    try:
+        payload = load_signed_listing_token(token, "moved_to_mls")
+    except signing.BadSignature:
+        return render(
+            request,
+            "listing_checkin_result.html",
+            {"message": "This moved-to-MLS link is invalid or has expired."},
+            status=400,
+        )
+
+    listing = Listing.objects.filter(pk=payload["listing_id"], agent_id=payload["agent_id"]).first()
+    if listing is None:
+        return render(
+            request,
+            "listing_checkin_result.html",
+            {"message": "This opportunity could not be found."},
+            status=404,
+        )
+
+    if is_listing_stale(listing):
+        if listing.is_active and listing.status == Listing.Status.ACTIVE and listing.removed_at is None:
+            listing.mark_stale()
+        return render(
+            request,
+            "listing_checkin_result.html",
+            {
+                "title": "Opportunity Check-In Expired",
+                "message": "This refresh link has expired because the opportunity is no longer active on Whisper.",
+            },
+            status=410,
+        )
+
+    listing.mark_moved_to_mls()
+    return render(
+        request,
+        "listing_checkin_result.html",
+        {
+            "title": "Opportunity Removed",
+            "message": "Your opportunity was marked as moved to MLS and removed from Whisper.",
+        },
     )
 
 

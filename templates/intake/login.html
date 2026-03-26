@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Intake Login | Whisper{% endblock %}
+{% block title %}Admin Portal Login | Whisper{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
 <section class="card" style="display:grid; gap:1rem; max-width:30rem; margin:2rem auto 0;">
     <div style="display:grid; gap:0.35rem;">
-        <h1 style="margin:0;">Reviewer Login</h1>
-        <p class="muted" style="margin:0;">Restricted intake access for Whisper reviewers.</p>
+        <h1 style="margin:0;">Admin Portal Login</h1>
+        <p class="muted" style="margin:0;">Restricted admin access for Whisper queue operations.</p>
     </div>
     <form method="post">
         {% csrf_token %}

@@ -42,11 +42,24 @@ def build_access_request_rejection_email():
 
 
 def build_access_request_waitlist_email():
-    subject = "Whisper isn’t in your area yet — but you’re on the list"
+    subject = "You’re on the Whisper waitlist"
     html_body, text_body = render_email(
         html_template="emails/access/waitlist.html",
         text_template="emails/access/waitlist.txt",
         context={
+            "site_base_url": settings.SITE_BASE_URL,
+        },
+    )
+    return subject, html_body, text_body
+
+
+def build_access_request_activation_email(*, sign_in_url):
+    subject = "Whisper is live for you now"
+    html_body, text_body = render_email(
+        html_template="emails/access/activation.html",
+        text_template="emails/access/activation.txt",
+        context={
+            "sign_in_url": sign_in_url,
             "site_base_url": settings.SITE_BASE_URL,
         },
     )

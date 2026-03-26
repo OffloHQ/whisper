@@ -1,18 +1,16 @@
 <p>Hi {{ agent_name }},</p>
 <p>Just a quick Whisper check-in.</p>
-<p>Are these opportunities still active?</p>
+<p>These opportunities will expire soon unless you refresh them.</p>
 {% for listing in listings %}
 <p>
     <strong>{{ listing.descriptor }}</strong><br>
-    State: {{ listing.state_label }}<br>
-    Last validated:
-    {% if listing.is_required %}
-        <strong>{{ listing.last_validated_label }}</strong>
-    {% else %}
-        {{ listing.last_validated_label }}
+    Last validated: {{ listing.last_validated_label }}<br>
+    Stale on: {{ listing.stale_at_label }}<br>
+    <a href="{{ listing.confirm_url }}">{{ listing.primary_action_label }}</a>
+    {% if listing.show_moved_to_mls_action %}
+        | <a href="{{ listing.moved_to_mls_url }}">Moved to MLS</a>
     {% endif %}
-    <br>
-    <a href="{{ listing.confirm_url }}">{{ listing.primary_action_label }}</a> |
+    |
     <a href="{{ listing.remove_url }}">NO remove opportunity</a>
 </p>
 {% endfor %}

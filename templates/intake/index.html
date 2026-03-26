@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Intake Portal | Whisper{% endblock %}
+{% block title %}Admin Portal | Whisper{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block content %}
 <section class="card" style="display:grid; gap:1rem; max-width:54rem; margin:2rem auto 0;">
     <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center;">
         <div>
-            <h1 style="margin:0;">Intake Portal</h1>
-            <p class="muted" style="margin:0.35rem 0 0;">Manual review and wait list operations for Whisper.</p>
+            <h1 style="margin:0;">Admin Portal</h1>
+            <p class="muted" style="margin:0.35rem 0 0;">Queue operations for review, recovery, and access activation.</p>
         </div>
         <a href="{% url 'intake_logout' %}" style="text-decoration:none;">Sign Out</a>
     </div>
@@ -21,7 +21,7 @@
         {% endif %}
         {% if can_manage_waitlist %}
             <a href="{% url 'intake_waitlist' %}" class="card" style="margin:0; text-decoration:none; color:inherit;">
-                <strong>Wait List</strong>
+                <strong>Waitlist</strong>
                 <div class="muted" style="margin-top:0.35rem;">{{ waitlist_count }} requests</div>
             </a>
         {% endif %}

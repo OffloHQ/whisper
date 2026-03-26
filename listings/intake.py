@@ -1,9 +1,11 @@
 import logging
 
+from django.utils import timezone
 from django.urls import reverse
 
 from .email_flows import (
     build_access_request_continuation_token,
+    send_access_request_activation_email,
     send_access_request_manual_approval_email,
     send_access_request_rejection_email,
     send_access_request_waitlist_email,
@@ -72,17 +74,93 @@ def get_or_create_pending_agent(access_request):
     return agent
 
 
+def get_or_create_access_agent(access_request):
+    agent = AgentUser.objects.filter(email=access_request.email).first()
+    if agent is None:
+        agent = AgentUser(
+            email=access_request.email,
+            name=access_request.full_name or access_request.email,
+            state=access_request.state,
+            license_number=access_request.license_number,
+            is_active=False,
+        )
+    else:
+        agent.name = access_request.full_name or agent.name
+        agent.state = access_request.state
+        if access_request.license_number:
+            agent.license_number = access_request.license_number
+    return agent
+
+
+def can_activate_waitlist_request(access_request):
+    return (
+        access_request.completed_at is None
+        and access_request.queue_type == AccessRequest.QueueType.WAITLIST
+        and access_request.status == AccessRequest.Status.WAITLIST
+        and access_request.decision_status != AccessRequest.DecisionStatus.COMPLETED
+    )
+
+
+def can_activate_manual_review_request(access_request):
+    return (
+        access_request.completed_at is None
+        and access_request.queue_type == AccessRequest.QueueType.MANUAL_REVIEW
+        and access_request.status == AccessRequest.Status.MANUAL_REVIEW
+        and access_request.decision_status not in {
+            AccessRequest.DecisionStatus.REJECTED,
+            AccessRequest.DecisionStatus.COMPLETED,
+        }
+    )
+
+
+def can_activate_access_request(access_request):
+    return can_activate_waitlist_request(access_request) or can_activate_manual_review_request(access_request)
+
+
+def can_reject_access_request(access_request):
+    return (
+        access_request.completed_at is None
+        and access_request.queue_type == AccessRequest.QueueType.MANUAL_REVIEW
+        and access_request.status == AccessRequest.Status.MANUAL_REVIEW
+        and access_request.decision_status not in {
+            AccessRequest.DecisionStatus.REJECTED,
+            AccessRequest.DecisionStatus.COMPLETED,
+        }
+    )
+
+
+def get_resend_access_email_eligible_emails(emails):
+    if not emails:
+        return set()
+    return set(
+        AgentUser.objects.filter(
+            email__in=emails,
+            signup_status=AgentUser.SignupStatus.ACTIVE,
+            is_active=True,
+            deleted_at__isnull=True,
+        ).values_list("email", flat=True)
+    )
+
+
+def can_resend_access_email(access_request):
+    return access_request.email in get_resend_access_email_eligible_emails([access_request.email])
+
+
 def approve_access_request(*, access_request, reviewed_by, request, decision_reason=""):
-    agent = get_or_create_pending_agent(access_request)
+    agent = get_or_create_access_agent(access_request)
+    agent.signup_status = AgentUser.SignupStatus.ACTIVE
+    agent.is_verified = True
+    agent.is_active = True
+    agent.save()
     access_request.mark_review_decision(
-        decision_status=AccessRequest.DecisionStatus.APPROVED,
+        decision_status=AccessRequest.DecisionStatus.COMPLETED,
         reviewed_by=reviewed_by,
         decision_reason=decision_reason,
     )
-    access_request.queue_type = AccessRequest.QueueType.MANUAL_REVIEW
-    access_request.status = AccessRequest.Status.MANUAL_REVIEW
+    access_request.queue_type = AccessRequest.QueueType.NONE
+    access_request.status = AccessRequest.Status.COMPLETED
     access_request.requires_manual_review = False
-    continuation_link = build_manual_approval_link(request, access_request)
+    access_request.completed_at = timezone.now()
     access_request.save(
         update_fields=[
             "decision_status",
@@ -92,18 +170,21 @@ def approve_access_request(*, access_request, reviewed_by, request, decision_rea
             "queue_type",
             "status",
             "requires_manual_review",
+            "completed_at",
             "updated_at",
         ]
     )
     notification_sent = False
+    sign_in_link = ""
     try:
-        send_access_request_manual_approval_email(
+        _, sign_in_link = send_access_request_activation_email(
+            request,
             access_request=access_request,
-            continuation_link=continuation_link,
+            agent=agent,
         )
     except Exception:
         logger.warning(
-            "Manual approval notification email failed for access_request_id=%s email=%s",
+            "Activation notification email failed for access_request_id=%s email=%s",
             access_request.id,
             access_request.email,
             exc_info=True,
@@ -119,7 +200,161 @@ def approve_access_request(*, access_request, reviewed_by, request, decision_rea
             ]
         )
         notification_sent = True
-    return continuation_link, agent, notification_sent
+    return sign_in_link, agent, notification_sent
+
+
+def activate_waitlist_requests(*, access_requests, reviewed_by, request, decision_reason=""):
+    activated_count = 0
+    skipped_count = 0
+    failed_count = 0
+    skipped_emails = []
+    failed_emails = []
+
+    for access_request in access_requests:
+        if not can_activate_waitlist_request(access_request):
+            skipped_count += 1
+            skipped_emails.append(access_request.email)
+            continue
+        try:
+            approve_access_request(
+                access_request=access_request,
+                reviewed_by=reviewed_by,
+                request=request,
+                decision_reason=decision_reason or access_request.manual_decision_reason or access_request.verification_reason,
+            )
+        except Exception:
+            failed_count += 1
+            failed_emails.append(access_request.email)
+            logger.warning(
+                "Bulk waitlist activation failed for access_request_id=%s email=%s",
+                access_request.id,
+                access_request.email,
+                exc_info=True,
+            )
+        else:
+            activated_count += 1
+
+    return activated_count, skipped_count, failed_count, skipped_emails, failed_emails
+
+
+def send_access_request_invites(*, access_requests, request):
+    invited_count = 0
+    skipped_count = 0
+    failed_count = 0
+    skipped_emails = []
+    failed_emails = []
+    eligible_emails = get_resend_access_email_eligible_emails([access_request.email for access_request in access_requests])
+
+    for access_request in access_requests:
+        if access_request.email not in eligible_emails:
+            skipped_count += 1
+            skipped_emails.append(access_request.email)
+            continue
+        agent = AgentUser.objects.filter(
+            email=access_request.email,
+            signup_status=AgentUser.SignupStatus.ACTIVE,
+            is_active=True,
+            deleted_at__isnull=True,
+        ).first()
+        if agent is None:
+            skipped_count += 1
+            skipped_emails.append(access_request.email)
+            continue
+        try:
+            send_access_request_activation_email(
+                request,
+                access_request=access_request,
+                agent=agent,
+            )
+        except Exception:
+            failed_count += 1
+            failed_emails.append(access_request.email)
+            logger.warning(
+                "Invite resend failed for access_request_id=%s email=%s",
+                access_request.id,
+                access_request.email,
+                exc_info=True,
+            )
+        else:
+            access_request.record_notification(notification_type=AccessRequest.NotificationType.APPROVAL)
+            access_request.save(
+                update_fields=[
+                    "approval_email_sent_at",
+                    "last_notification_type",
+                    "last_notification_sent_at",
+                    "updated_at",
+                ]
+            )
+            invited_count += 1
+
+    return invited_count, skipped_count, failed_count, skipped_emails, failed_emails
+
+
+def approve_manual_review_requests(*, access_requests, reviewed_by, request, decision_reason=""):
+    approved_count = 0
+    skipped_count = 0
+    failed_count = 0
+    skipped_emails = []
+    failed_emails = []
+
+    for access_request in access_requests:
+        if not can_activate_manual_review_request(access_request):
+            skipped_count += 1
+            skipped_emails.append(access_request.email)
+            continue
+        try:
+            approve_access_request(
+                access_request=access_request,
+                reviewed_by=reviewed_by,
+                request=request,
+                decision_reason=decision_reason or access_request.manual_decision_reason or access_request.verification_reason,
+            )
+        except Exception:
+            failed_count += 1
+            failed_emails.append(access_request.email)
+            logger.warning(
+                "Bulk manual-review approval failed for access_request_id=%s email=%s",
+                access_request.id,
+                access_request.email,
+                exc_info=True,
+            )
+        else:
+            approved_count += 1
+
+    return approved_count, skipped_count, failed_count, skipped_emails, failed_emails
+
+
+def reject_manual_review_requests(*, access_requests, reviewed_by, decision_reason=""):
+    rejected_count = 0
+    skipped_count = 0
+    failed_count = 0
+    skipped_emails = []
+    failed_emails = []
+
+    for access_request in access_requests:
+        if not can_reject_access_request(access_request):
+            skipped_count += 1
+            skipped_emails.append(access_request.email)
+            continue
+        try:
+            reject_access_request(
+                access_request=access_request,
+                reviewed_by=reviewed_by,
+                decision_reason=decision_reason or access_request.manual_decision_reason or access_request.verification_reason,
+            )
+        except Exception:
+            failed_count += 1
+            failed_emails.append(access_request.email)
+            logger.warning(
+                "Bulk manual-review rejection failed for access_request_id=%s email=%s",
+                access_request.id,
+                access_request.email,
+                exc_info=True,
+            )
+        else:
+            rejected_count += 1
+
+    return rejected_count, skipped_count, failed_count, skipped_emails, failed_emails
 
 
 def reject_access_request(*, access_request, reviewed_by, decision_reason=""):
