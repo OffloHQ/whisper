@@ -1,0 +1,86 @@
+{% load listing_extras %}
+{% with has_city=listing.city|default_if_none:'' has_title=listing.title|default_if_none:'' %}
+    <article class="card listing-card">
+        <div class="listing-card-main">
+            <div class="listing-primary">
+                <div class="listing-card-top">
+                    <div class="listing-card-header">
+                        <h2>
+                            {% if has_title %}
+                                {{ listing.title }}
+                            {% elif has_city %}
+                                {{ listing.city }} Opportunity
+                            {% else %}
+                                Untitled Opportunity
+                            {% endif %}
+                        </h2>
+                    </div>
+                    <form method="post" action="{% url 'toggle_saved_listing' listing.id %}" class="listing-save-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button
+                            type="submit"
+                            class="listing-save-button save-listing-button{% if listing.id in saved_listing_ids %} is-saved{% endif %}"
+                            aria-label="{% if listing.id in saved_listing_ids %}Unsave opportunity{% else %}Save opportunity{% endif %}"
+                        >
+                            {% if listing.id in saved_listing_ids %}★{% else %}☆{% endif %}
+                        </button>
+                    </form>
+                </div>
+
+                {% if listing.stage %}
+                    <div class="listing-primary-meta">
+                        <p class="listing-stage">{{ listing.get_stage_display }}</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="listing-data">
+                {% if listing.price_min or listing.price_max %}
+                    <p class="listing-price">
+                        {% if listing.price_min and listing.price_max %}
+                            {{ listing.price_min|compact_price }} &ndash; {{ listing.price_max|compact_price }}
+                        {% elif listing.price_min %}
+                            {{ listing.price_min|compact_price }}+
+                        {% else %}
+                            Up to {{ listing.price_max|compact_price }}
+                        {% endif %}
+                    </p>
+                {% endif %}
+                {% if listing.beds or listing.baths %}
+                    <p class="listing-specs">
+                        {% if listing.beds %}{{ listing.beds }} Bed{% if listing.beds != 1 %}s{% endif %}{% endif %}
+                        {% if listing.beds and listing.baths %} / {% endif %}
+                        {% if listing.baths %}{{ listing.baths }} Bath{% if listing.baths != "1" and listing.baths != "1.0" %}s{% endif %}{% endif %}
+                    </p>
+                {% endif %}
+            </div>
+
+            {% if listing.description %}
+                <div class="listing-note">
+                    <p class="listing-description">{{ listing.description|truncatechars:150 }}</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="listing-actions">
+            <button
+                type="button"
+                class="listing-contact-button"
+                data-listing-contact-target="listing-contact-{{ listing.id }}"
+                aria-expanded="false"
+            >
+                Contact Agent
+            </button>
+        </div>
+        <section class="listing-contact-panel" id="listing-contact-{{ listing.id }}" hidden aria-label="Contact details">
+            <h3>{{ listing.agent.name }}</h3>
+            {% if listing.agent.primary_phone %}
+                <p><a href="tel:{{ listing.agent.primary_phone.phone_number }}">{{ listing.agent.primary_phone.phone_number }}</a></p>
+            {% endif %}
+            {% if listing.agent.contact_email %}
+                <p class="muted"><a href="mailto:{{ listing.agent.contact_email }}">{{ listing.agent.contact_email }}</a></p>
+            {% endif %}
+        </section>
+    </article>
+{% endwith %}

@@ -4,6 +4,8 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.conf import settings
 from django.core import signing
+from django.db.models import Value
+from django.db.models.functions import Coalesce, Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -515,11 +517,18 @@ def get_feed_context(
     show_filter_panel=False,
     show_listing_form=False,
 ):
+    sort_key = request.GET.get("sort", "newest")
+    sort_dir = request.GET.get("dir", "desc")
+    valid_sorts = {"newest", "opportunity", "stage", "price", "specs"}
+    if sort_key not in valid_sorts:
+        sort_key = "newest"
+    if sort_dir not in {"asc", "desc"}:
+        sort_dir = "desc"
+
     listings = (
         Listing.objects.filter(is_active=True)
         .select_related("agent")
         .prefetch_related("agent__phones", "agent__emails")
-        .order_by("-created_at")
     )
     current_agent = get_current_agent(request)
     filter_form = filter_form or FeedFilterForm(request.GET or None)
@@ -553,6 +562,69 @@ def get_feed_context(
         else:
             listings = listings.filter(saved_by_agents__agent=current_agent)
 
+    if sort_key == "opportunity":
+        listings = listings.annotate(feed_sort_title=Lower(Coalesce("title", "city", Value(""))))
+        order_fields = ["feed_sort_title", "-created_at"]
+    elif sort_key == "stage":
+        order_fields = ["stage", "-created_at"]
+    elif sort_key == "price":
+        listings = listings.annotate(feed_sort_price=Coalesce("price_min", "price_max"))
+        order_fields = ["feed_sort_price", "-created_at"]
+    elif sort_key == "specs":
+        order_fields = ["beds", "baths", "-created_at"]
+    else:
+        order_fields = ["-created_at"]
+
+    if sort_key != "newest" and sort_dir == "desc":
+        order_fields = [field if field.startswith("-") else f"-{field}" for field in order_fields]
+    elif sort_key == "newest" and sort_dir == "asc":
+        order_fields = ["created_at"]
+    listings = listings.order_by(*order_fields)
+
+    sort_defaults = {
+        "opportunity": "asc",
+        "stage": "asc",
+        "price": "desc",
+        "specs": "desc",
+    }
+    sort_headers = []
+    for key, label in (
+        ("opportunity", "Opportunity"),
+        ("stage", "Stage"),
+        ("price", "Price"),
+        ("specs", "Specs"),
+    ):
+        params = request.GET.copy()
+        next_dir = sort_defaults[key]
+        if sort_key == key:
+            next_dir = "desc" if sort_dir == "asc" else "asc"
+        params["sort"] = key
+        params["dir"] = next_dir
+        sort_headers.append(
+            {
+                "key": key,
+                "label": label,
+                "url": f"{request.path}?{params.urlencode()}",
+                "is_active": sort_key == key,
+                "direction": sort_dir if sort_key == key else "",
+            }
+        )
+    sort_header_map = {header["key"]: header for header in sort_headers}
+
+    current_sort_label = {
+        "newest": "Newest",
+        "opportunity": "Opportunity",
+        "stage": "Stage",
+        "price": "Price",
+        "specs": "Specs",
+    }[sort_key]
+    if sort_key != "newest":
+        if sort_key in {"opportunity", "stage"}:
+            direction_label = "A-Z" if sort_dir == "asc" else "Z-A"
+        else:
+            direction_label = "Low-High" if sort_dir == "asc" else "High-Low"
+        current_sort_label = f"{current_sort_label} ({direction_label})"
+
     my_listing_count = 0
     if current_agent is not None:
         my_listing_count = Listing.objects.filter(agent=current_agent, is_active=True).count()
@@ -571,6 +643,9 @@ def get_feed_context(
         "unread_notification_count": get_unread_notification_count(current_agent),
         "filter_form": filter_form,
         "form": form or ListingForm(),
+        "feed_current_sort_label": current_sort_label,
+        "feed_sort_header_map": sort_header_map,
+        "feed_sort_headers": sort_headers,
         "listings": listings,
         "my_listing_count": my_listing_count,
         "post_form_action": "/post/?source=feed",

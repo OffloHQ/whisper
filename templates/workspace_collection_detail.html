@@ -154,9 +154,94 @@
         justify-content: center;
         width: 2.6rem;
     }
+    .workspace-record-header {
+        display: none;
+    }
+    .workspace-detail-list {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .workspace-detail-record {
+        display: grid;
+        gap: 0.45rem;
+        margin: 0;
+    }
+    .workspace-detail-title,
+    .workspace-detail-note {
+        margin: 0;
+    }
+    .workspace-detail-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
     @media (min-width: 768px) {
         .workspace-app-shell main {
             padding: 2rem 2rem 4rem;
+        }
+        .workspace-detail-shell {
+            --workspace-detail-record-columns: minmax(0, 1.65fr) minmax(130px, auto) minmax(120px, auto);
+            --workspace-detail-record-gap: 0.95rem;
+            --workspace-detail-record-pad-x: 0.9rem;
+        }
+        .workspace-record-header {
+            align-items: center;
+            color: #7b6f64;
+            display: grid;
+            font-size: 0.72rem;
+            font-weight: 700;
+            gap: var(--workspace-detail-record-gap);
+            grid-template-columns: var(--workspace-detail-record-columns);
+            letter-spacing: 0.08em;
+            margin: 0 0 0.2rem;
+            padding: 0 var(--workspace-detail-record-pad-x);
+            text-transform: uppercase;
+        }
+        .workspace-record-header > * {
+            align-items: center;
+            display: flex;
+            justify-content: flex-start;
+            min-width: 0;
+            width: 100%;
+        }
+        .workspace-detail-list {
+            gap: 0.4rem;
+        }
+        .workspace-detail-record {
+            align-items: center;
+            background: rgba(255, 252, 246, 0.84);
+            border-radius: 12px;
+            column-gap: var(--workspace-detail-record-gap);
+            display: grid;
+            gap: 0.18rem var(--workspace-detail-record-gap);
+            grid-template-columns: var(--workspace-detail-record-columns);
+            padding: 0.72rem var(--workspace-detail-record-pad-x) 0.82rem;
+        }
+        .workspace-detail-record:nth-child(odd) {
+            background: rgba(249, 244, 236, 0.96);
+        }
+        .workspace-detail-record:nth-child(even) {
+            background: rgba(255, 252, 246, 0.84);
+        }
+        .workspace-detail-title,
+        .workspace-detail-note {
+            min-width: 0;
+        }
+        .workspace-detail-title {
+            font-size: 1rem;
+            justify-self: stretch;
+            line-height: 1.18;
+            width: 100%;
+        }
+        .workspace-detail-note {
+            color: var(--muted);
+            font-size: 0.84rem;
+            line-height: 1.34;
+        }
+        .workspace-detail-meta {
+            gap: 0.3rem 0.75rem;
+            justify-self: stretch;
+            width: 100%;
         }
     }
     .workspace-detail-shell input[type="checkbox"] {
@@ -251,13 +336,23 @@
 <section class="card" style="display:grid; gap:1rem; margin-top:1rem;">
     <h2 style="margin:0;">Opportunities</h2>
     {% if collection_items %}
-        <div style="display:grid; gap:0.85rem;">
+        <div class="workspace-record-header">
+            <span>Opportunity</span>
+            <span>Details</span>
+            <span>Price</span>
+        </div>
+        <div class="workspace-detail-list">
             {% for item in collection_items %}
-                <article class="card" style="display:grid; gap:0.45rem; margin:0;">
-                    <h2 style="margin:0;">{{ item.listing.title }}</h2>
-                    <p class="muted" style="margin:0;">{{ item.listing.city }} | {{ item.listing.beds }} bed / {{ item.listing.baths }} bath</p>
+                <article class="card workspace-detail-record">
+                    <div class="workspace-detail-title">
+                        <h2 style="margin:0;">{{ item.listing.title }}</h2>
+                        <p class="workspace-detail-note muted">{{ item.listing.city }}</p>
+                    </div>
+                    <div class="workspace-detail-meta muted">
+                        <span>{{ item.listing.get_stage_display }}</span>
+                        <span>{{ item.listing.beds }} bed / {{ item.listing.baths }} bath</span>
+                    </div>
                     <p class="listing-price" style="margin:0;">{{ item.listing.price_min|compact_price }} &ndash; {{ item.listing.price_max|compact_price }}</p>
-                    <p class="muted" style="margin:0;">{{ item.listing.get_stage_display }}</p>
                 </article>
             {% endfor %}
         </div>

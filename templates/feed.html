@@ -89,6 +89,7 @@
     .mobile-board-actions {
         align-items: center;
         display: flex;
+        flex-wrap: wrap;
         gap: 0.75rem;
         margin-top: 1rem;
     }
@@ -101,6 +102,19 @@
         display: inline-flex;
         gap: 0.45rem;
         padding: 0.72rem 1rem;
+    }
+    .mobile-board-save-button {
+        align-items: center;
+        background: rgba(255, 252, 246, 0.95);
+        border: 1px solid rgba(31, 26, 20, 0.12);
+        border-radius: 999px;
+        color: var(--text);
+        display: inline-flex;
+        gap: 0.45rem;
+        padding: 0.72rem 1rem;
+    }
+    .mobile-board-save-button[aria-expanded="true"] {
+        background: rgba(31, 26, 20, 0.08);
     }
     .mobile-board-filter-button svg {
         height: 1rem;
@@ -136,6 +150,34 @@
         gap: 0.85rem;
         margin: 0 0 1rem;
     }
+    .mobile-save-panel-header {
+        align-items: center;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+    }
+    .mobile-save-panel-header-copy {
+        min-width: 0;
+    }
+    .mobile-save-panel-close {
+        align-items: center;
+        background: rgba(31, 26, 20, 0.06);
+        border: 1px solid rgba(31, 26, 20, 0.08);
+        border-radius: 999px;
+        color: var(--text);
+        display: inline-flex;
+        flex: 0 0 auto;
+        height: 2rem;
+        justify-content: center;
+        padding: 0;
+        width: 2rem;
+    }
+    .mobile-only-copy {
+        display: inline;
+    }
+    .desktop-only-copy {
+        display: none;
+    }
     .collection-alert-card h2,
     .collection-alert-card p {
         margin: 0;
@@ -157,6 +199,22 @@
         gap: 0.65rem;
         padding: 0.75rem 0.85rem;
     }
+    .collection-alert-option-block {
+        display: grid;
+        gap: 0.5rem;
+    }
+    .collection-alert-new-collection-field[hidden] {
+        display: none;
+    }
+    .collection-alert-new-collection-field {
+        display: grid;
+        gap: 0.35rem;
+        padding: 0 0.2rem 0 2.2rem;
+    }
+    .collection-alert-new-collection-field label {
+        color: var(--muted);
+        font-size: 0.9rem;
+    }
     .collection-alert-option input {
         width: auto;
     }
@@ -175,43 +233,105 @@
         color: var(--muted);
         font-size: 0.92rem;
     }
+    .collection-alert-card.is-mobile-collapsible {
+        display: none;
+    }
+    .collection-alert-card.is-mobile-collapsible.is-open {
+        display: grid;
+    }
     .listing-grid {
         align-items: start;
         display: grid;
         gap: 0.85rem;
         grid-template-columns: 1fr;
     }
+    .listing-list-header {
+        display: none;
+    }
+    .listing-list-header-link {
+        color: inherit;
+        display: inline-flex;
+        gap: 0.25rem;
+        text-decoration: none;
+    }
+    .listing-list-header-link.is-active {
+        color: var(--text);
+    }
+    .listing-list-header-arrow {
+        font-size: 0.68rem;
+        line-height: 1;
+    }
     .listing-card {
         align-self: start;
         border-radius: 22px;
-        display: flex;
-        flex-direction: column;
+        display: grid;
         gap: 0.72rem;
         position: relative;
     }
+    .listing-card-main {
+        display: grid;
+        gap: 0.72rem;
+    }
+    .listing-primary {
+        display: grid;
+        gap: 0.45rem;
+        min-width: 0;
+    }
+    .listing-card-top {
+        align-items: flex-start;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+    }
     .listing-card-header {
-        padding-right: 2.4rem;
+        min-width: 0;
     }
     .listing-card h2 {
         font-size: 1.12rem;
         line-height: 1.1;
         margin: 0;
     }
-    .listing-meta {
-        display: grid;
-        gap: 0.35rem;
+    .listing-primary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
     }
-    .listing-meta p,
+    .listing-data {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem 0.9rem;
+    }
+    .listing-primary-meta p,
+    .listing-data p,
     .listing-description,
     .listing-empty {
         margin: 0;
     }
-    .listing-meta p {
+    .listing-data p {
         color: var(--text);
     }
     .listing-stage {
+        align-items: center;
+        background: rgba(123, 90, 56, 0.1);
+        border-radius: 999px;
         color: #7b5a38;
+        display: inline-flex;
+        font-size: 0.78rem;
         font-weight: 700;
+        letter-spacing: 0.02em;
+        padding: 0.26rem 0.56rem;
+        text-transform: uppercase;
+    }
+    .listing-price {
+        font-weight: 700;
+    }
+    .listing-specs {
+        color: var(--muted);
+        font-size: 0.94rem;
+    }
+    .listing-note {
+        min-width: 0;
     }
     .listing-description,
     .listing-empty {
@@ -221,7 +341,7 @@
     .listing-actions {
         align-items: center;
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start;
         margin-top: auto;
     }
     .listing-contact-button {
@@ -263,6 +383,62 @@
     }
     .listing-save-button.is-saved {
         background: rgba(31, 26, 20, 0.12);
+    }
+    .listing-card-empty {
+        grid-column: 1 / -1;
+        max-width: 34rem;
+    }
+    .board-shell.is-list-view .listing-grid {
+        grid-template-columns: 1fr;
+    }
+    .board-shell.is-list-view .listing-card {
+        border-radius: 18px;
+        gap: 0.7rem;
+        padding: 0.9rem 1rem;
+    }
+    .board-shell.is-list-view .listing-card-main {
+        gap: 0.55rem;
+    }
+    .board-shell.is-list-view .listing-card h2 {
+        font-size: 1rem;
+        line-height: 1.2;
+    }
+    .board-shell.is-list-view .listing-primary {
+        gap: 0.4rem;
+    }
+    .board-shell.is-list-view .listing-card-top {
+        gap: 0.65rem;
+    }
+    .board-shell.is-list-view .listing-primary-meta {
+        gap: 0.4rem;
+    }
+    .board-shell.is-list-view .listing-stage {
+        font-size: 0.72rem;
+        padding: 0.23rem 0.52rem;
+    }
+    .board-shell.is-list-view .listing-data {
+        gap: 0.28rem 0.85rem;
+    }
+    .board-shell.is-list-view .listing-data p {
+        font-size: 0.92rem;
+    }
+    .board-shell.is-list-view .listing-price {
+        font-size: 0.97rem;
+    }
+    .board-shell.is-list-view .listing-description {
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        display: -webkit-box;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        overflow: hidden;
+    }
+    .board-shell.is-list-view .listing-actions {
+        justify-content: stretch;
+        margin-top: 0;
+    }
+    .board-shell.is-list-view .listing-contact-button {
+        width: 100%;
     }
     .filter-overlay,
     .listing-overlay,
@@ -309,6 +485,54 @@
     .listing-overlay.is-open .listing-sheet,
     .account-overlay.is-open .account-sheet {
         transform: translateX(0);
+    }
+    .filter-drawer {
+        border-left: 0;
+        border-radius: 24px 24px 0 0;
+        box-shadow: 0 -18px 40px rgba(31, 26, 20, 0.14);
+        display: flex;
+        flex-direction: column;
+        left: 0;
+        max-height: min(88vh, calc(100dvh - 0.75rem));
+        max-width: none;
+        overflow: hidden;
+        padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+        top: auto;
+        transform: translateY(100%);
+        width: auto;
+    }
+    .filter-overlay.is-open .filter-drawer {
+        transform: translateY(0);
+    }
+    .filter-drawer-body {
+        -webkit-overflow-scrolling: touch;
+        display: grid;
+        gap: 1rem;
+        min-height: 0;
+        overflow-y: auto;
+        padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+    }
+    .filter-form {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .filter-actions {
+        align-items: center;
+        background: rgba(255, 252, 246, 0.98);
+        bottom: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: space-between;
+        padding-top: 0.2rem;
+        position: sticky;
+    }
+    .filter-actions button {
+        min-width: 8rem;
+    }
+    .filter-clear-link {
+        color: var(--muted);
+        text-decoration: none;
     }
     .drawer-header {
         align-items: flex-start;
@@ -470,12 +694,27 @@
         .mobile-account-entry {
             display: none;
         }
+        .mobile-save-panel-close,
+        .mobile-board-save-button {
+            display: none;
+        }
+        .mobile-only-copy {
+            display: none;
+        }
+        .desktop-only-copy {
+            display: inline;
+        }
         .feed-app-shell main {
             padding: 2rem 2rem 4rem;
         }
         .board-shell {
             margin: 0 auto;
             max-width: 1180px;
+        }
+        .board-shell.is-list-view {
+            --feed-record-columns: minmax(260px, 2.2fr) 72px 92px 110px 140px minmax(180px, 1.5fr) 148px;
+            --feed-record-gap: 0.8rem;
+            --feed-record-pad-x: 0.85rem;
         }
         .board-header {
             margin-bottom: 1.35rem;
@@ -488,8 +727,8 @@
         .board-toolbar {
             display: flex;
         }
-        .listing-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+        .collection-alert-card.is-mobile-collapsible {
+            display: grid;
         }
         .listing-card {
             gap: 0.62rem;
@@ -498,6 +737,163 @@
         .listing-description {
             font-size: 0.93rem;
             line-height: 1.45;
+        }
+        .board-shell.is-list-view .listing-grid {
+            gap: 0.4rem;
+        }
+        .board-shell.is-list-view .listing-list-header {
+            align-items: center;
+            color: #7b6f64;
+            column-gap: var(--feed-record-gap);
+            display: grid;
+            font-size: 0.72rem;
+            font-weight: 700;
+            grid-template-columns: var(--feed-record-columns);
+            letter-spacing: 0.08em;
+            margin: 0 0 0.2rem;
+            padding: 0 var(--feed-record-pad-x);
+            text-transform: uppercase;
+        }
+        .board-shell.is-list-view .listing-list-header > * {
+            align-items: center;
+            display: flex;
+            justify-content: flex-start;
+            min-width: 0;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-list-header > :nth-child(2) {
+            justify-content: center;
+        }
+        .board-shell.is-list-view .listing-list-header > :last-child {
+            justify-content: flex-end;
+        }
+        .board-shell.is-list-view .listing-list-header-link {
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-card {
+            align-items: start;
+            background: rgba(255, 252, 246, 0.82);
+            border-radius: 12px;
+            box-shadow: none;
+            column-gap: var(--feed-record-gap);
+            grid-template-areas:
+                "title save stage price specs note action"
+                "contact contact contact contact contact contact contact";
+            grid-template-columns: var(--feed-record-columns);
+            padding: 0.72rem var(--feed-record-pad-x) 0.82rem;
+            row-gap: 0.3rem;
+        }
+        .board-shell.is-list-view .listing-card:nth-child(odd) {
+            background: rgba(249, 244, 236, 0.96);
+        }
+        .board-shell.is-list-view .listing-card:nth-child(even) {
+            background: rgba(255, 252, 246, 0.84);
+        }
+        .board-shell.is-list-view .listing-card-main,
+        .board-shell.is-list-view .listing-primary,
+        .board-shell.is-list-view .listing-card-top,
+        .board-shell.is-list-view .listing-data {
+            display: contents;
+        }
+        .board-shell.is-list-view .listing-card-header {
+            align-self: center;
+            grid-area: title;
+            justify-self: stretch;
+            min-width: 0;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-card h2 {
+            font-size: 1.02rem;
+            line-height: 1.18;
+        }
+        .board-shell.is-list-view .listing-primary-meta {
+            align-self: center;
+            display: flex;
+            gap: 0.25rem;
+            grid-area: stage;
+            justify-content: flex-start;
+            justify-self: stretch;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-stage {
+            background: transparent;
+            border: 1px solid rgba(123, 90, 56, 0.22);
+            border-radius: 6px;
+            font-size: 0.67rem;
+            letter-spacing: 0.05em;
+            padding: 0.16rem 0.38rem;
+        }
+        .board-shell.is-list-view .listing-price,
+        .board-shell.is-list-view .listing-specs {
+            align-self: center;
+            display: flex;
+            justify-self: stretch;
+            white-space: nowrap;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-price {
+            font-size: 0.93rem;
+            grid-area: price;
+        }
+        .board-shell.is-list-view .listing-specs {
+            font-size: 0.88rem;
+            grid-area: specs;
+        }
+        .board-shell.is-list-view .listing-note {
+            align-self: center;
+            display: flex;
+            grid-area: note;
+            justify-self: stretch;
+            min-width: 0;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-description {
+            -webkit-line-clamp: 2;
+            font-size: 0.84rem;
+            line-height: 1.34;
+            max-width: none;
+        }
+        .board-shell.is-list-view .listing-save-form {
+            align-self: center;
+            display: flex;
+            grid-area: save;
+            justify-content: center;
+            justify-self: stretch;
+            opacity: 0.82;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-save-button {
+            background: transparent;
+            border-color: rgba(31, 26, 20, 0.08);
+            font-size: 0.82rem;
+            height: 1.72rem;
+            width: 1.72rem;
+        }
+        .board-shell.is-list-view .listing-save-button.is-saved {
+            background: rgba(31, 26, 20, 0.08);
+        }
+        .board-shell.is-list-view .listing-actions {
+            align-self: center;
+            display: grid;
+            gap: 0.35rem;
+            grid-area: action;
+            justify-content: stretch;
+            justify-items: end;
+            justify-self: stretch;
+            margin-top: 0;
+            min-width: 0;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-contact-button {
+            font-size: 0.9rem;
+            min-height: 2.15rem;
+            padding: 0.48rem 0.78rem;
+            white-space: nowrap;
+            width: 100%;
+        }
+        .board-shell.is-list-view .listing-contact-panel {
+            grid-area: contact;
+            margin-top: 0.35rem;
         }
         .listing-sheet {
             border-left: 1px solid rgba(31, 26, 20, 0.08);
@@ -522,11 +918,6 @@
             padding-right: 0;
         }
     }
-    @media (min-width: 1120px) {
-        .listing-grid {
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
-    }
     .feed-app-shell.is-desktop-filter-open .filter-overlay {
         opacity: 1;
         pointer-events: auto;
@@ -546,8 +937,18 @@
         .filter-drawer {
             border-left: 1px solid rgba(31, 26, 20, 0.08);
             border-radius: 28px 0 0 28px;
+            box-shadow: -18px 0 40px rgba(31, 26, 20, 0.14);
+            left: auto;
+            max-height: none;
             top: 74px;
+            transform: translateX(100%);
             width: min(100vw, 390px);
+        }
+        .filter-overlay.is-open .filter-drawer {
+            transform: translateX(0);
+        }
+        .filter-drawer-body {
+            padding-bottom: 1rem;
         }
     }
 </style>
@@ -574,12 +975,11 @@
 {% endblock %}
 
 {% block content %}
-<div class="board-shell" id="feed-layout">
+<div class="board-shell is-list-view" id="feed-layout">
     <section class="board-column">
         <header class="board-header">
             <div class="board-header-top">
                 <div class="board-copy">
-                    <p class="content-brand">Whisper</p>
                     <h1>Current Opportunities</h1>
                     <p>Private inventory, premarket movement, and curated local demand signals in one quiet board.</p>
                 </div>
@@ -600,7 +1000,7 @@
                                 <path d="M8 17h4"></path>
                                 <path d="M5 7v10"></path>
                             </svg>
-                            <span>Newest</span>
+                            <span>{{ feed_current_sort_label }}</span>
                         </button>
                     </div>
                 </div>
@@ -614,6 +1014,11 @@
                     </svg>
                     <span>Filters</span>
                 </button>
+                {% if active_filters and not has_filtered_empty_state %}
+                    <button type="button" class="mobile-board-save-button" id="mobile-save-intent-trigger" aria-expanded="{% if collection_form.errors %}true{% else %}false{% endif %}">
+                        <span>Notify me</span>
+                    </button>
+                {% endif %}
             </div>
         </header>
 
@@ -630,12 +1035,23 @@
         {% endif %}
 
         {% if active_filters and not has_filtered_empty_state %}
-            <section class="card collection-alert-card">
-                <div>
-                    <h2>Save this intent</h2>
-                    <p class="muted">Save these filters to an existing collection or create a new named alert.</p>
+            <section class="card collection-alert-card is-mobile-collapsible{% if collection_form.errors %} is-open{% endif %}" id="mobile-save-intent-panel">
+                <div class="mobile-save-panel-header">
+                    <div class="mobile-save-panel-header-copy">
+                        <h2>
+                            <span class="mobile-only-copy">Create alert</span>
+                            <span class="desktop-only-copy">Save this intent</span>
+                        </h2>
+                        <p class="muted">
+                            <span class="mobile-only-copy">We’ll email you when new opportunities match this search.</span>
+                            <span class="desktop-only-copy">Save these filters to an existing collection or create a new named alert.</span>
+                        </p>
+                    </div>
+                    <button type="button" class="mobile-save-panel-close" id="mobile-save-intent-close" aria-label="Close save panel">
+                        &times;
+                    </button>
                 </div>
-                <form method="post" action="{% url 'save_collection' %}" class="collection-alert-form">
+                <form method="post" action="{% url 'save_collection' %}" class="collection-alert-form" data-collection-choice-form>
                     {% csrf_token %}
                     <input type="hidden" name="city" value="{{ request.GET.city }}">
                     <input type="hidden" name="stage" value="{{ request.GET.stage }}">
@@ -645,14 +1061,19 @@
                     <input type="hidden" name="max_price" value="{{ request.GET.max_price }}">
                     <div class="collection-alert-options">
                         {% for radio in collection_form.collection_choice %}
-                            <label class="collection-alert-option">
-                                {{ radio.tag }}
-                                <span>{{ radio.choice_label }}</span>
-                            </label>
+                            <div class="collection-alert-option-block">
+                                <label class="collection-alert-option">
+                                    {{ radio.tag }}
+                                    <span>{{ radio.choice_label }}</span>
+                                </label>
+                                {% if radio.choice_label == "+ New Collection" %}
+                                    <div class="collection-alert-new-collection-field" data-new-collection-field{% if not collection_form.new_collection_name.errors and not collection_form.new_collection_name.value %} hidden{% endif %}>
+                                        <label for="{{ collection_form.new_collection_name.id_for_label }}">Name your new collection</label>
+                                        {{ collection_form.new_collection_name }}
+                                    </div>
+                                {% endif %}
+                            </div>
                         {% endfor %}
-                    </div>
-                    <div>
-                        {{ collection_form.new_collection_name }}
                     </div>
                     <label class="collection-alert-checkbox-row">
                         {{ collection_form.notifications_enabled }}
@@ -663,85 +1084,41 @@
             </section>
         {% endif %}
 
+        <div class="listing-list-header">
+            <a href="{{ feed_sort_header_map.opportunity.url }}" class="listing-list-header-link{% if feed_sort_header_map.opportunity.is_active %} is-active{% endif %}">
+                <span>{{ feed_sort_header_map.opportunity.label }}</span>
+                {% if feed_sort_header_map.opportunity.is_active %}
+                    <span class="listing-list-header-arrow" aria-hidden="true">{% if feed_sort_header_map.opportunity.direction == "asc" %}↑{% else %}↓{% endif %}</span>
+                {% endif %}
+            </a>
+            <span>Save</span>
+            <a href="{{ feed_sort_header_map.stage.url }}" class="listing-list-header-link{% if feed_sort_header_map.stage.is_active %} is-active{% endif %}">
+                <span>{{ feed_sort_header_map.stage.label }}</span>
+                {% if feed_sort_header_map.stage.is_active %}
+                    <span class="listing-list-header-arrow" aria-hidden="true">{% if feed_sort_header_map.stage.direction == "asc" %}↑{% else %}↓{% endif %}</span>
+                {% endif %}
+            </a>
+            <a href="{{ feed_sort_header_map.price.url }}" class="listing-list-header-link{% if feed_sort_header_map.price.is_active %} is-active{% endif %}">
+                <span>{{ feed_sort_header_map.price.label }}</span>
+                {% if feed_sort_header_map.price.is_active %}
+                    <span class="listing-list-header-arrow" aria-hidden="true">{% if feed_sort_header_map.price.direction == "asc" %}↑{% else %}↓{% endif %}</span>
+                {% endif %}
+            </a>
+            <a href="{{ feed_sort_header_map.specs.url }}" class="listing-list-header-link{% if feed_sort_header_map.specs.is_active %} is-active{% endif %}">
+                <span>{{ feed_sort_header_map.specs.label }}</span>
+                {% if feed_sort_header_map.specs.is_active %}
+                    <span class="listing-list-header-arrow" aria-hidden="true">{% if feed_sort_header_map.specs.direction == "asc" %}↑{% else %}↓{% endif %}</span>
+                {% endif %}
+            </a>
+            <span>Note</span>
+            <span>Actions</span>
+        </div>
+
         <section class="listing-grid">
             {% for listing in listings %}
-                {% with has_city=listing.city|default_if_none:'' has_title=listing.title|default_if_none:'' %}
-                    <article class="card listing-card">
-                        <form method="post" action="{% url 'toggle_saved_listing' listing.id %}" class="listing-save-form" style="position:absolute;top:1rem;right:1rem;">
-                            {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                            <button
-                                type="submit"
-                                class="listing-save-button save-listing-button{% if listing.id in saved_listing_ids %} is-saved{% endif %}"
-                                aria-label="{% if listing.id in saved_listing_ids %}Unsave opportunity{% else %}Save opportunity{% endif %}"
-                            >
-                                {% if listing.id in saved_listing_ids %}★{% else %}☆{% endif %}
-                            </button>
-                        </form>
-
-                        <div class="listing-card-header">
-                            <h2>
-                                {% if has_title %}
-                                    {{ listing.title }}
-                                {% elif has_city %}
-                                    {{ listing.city }} Opportunity
-                                {% else %}
-                                    Untitled Opportunity
-                                {% endif %}
-                            </h2>
-                        </div>
-
-                        <div class="listing-meta">
-                            {% if listing.beds or listing.baths %}
-                                <p>
-                                    {% if listing.beds %}{{ listing.beds }} Bed{% if listing.beds != 1 %}s{% endif %}{% endif %}
-                                    {% if listing.beds and listing.baths %} / {% endif %}
-                                    {% if listing.baths %}{{ listing.baths }} Bath{% if listing.baths != "1" and listing.baths != "1.0" %}s{% endif %}{% endif %}
-                                </p>
-                            {% endif %}
-                            {% if listing.price_min or listing.price_max %}
-                                <p>
-                                    {% if listing.price_min and listing.price_max %}
-                                        {{ listing.price_min|compact_price }} &ndash; {{ listing.price_max|compact_price }}
-                                    {% elif listing.price_min %}
-                                        {{ listing.price_min|compact_price }}+
-                                    {% else %}
-                                        Up to {{ listing.price_max|compact_price }}
-                                    {% endif %}
-                                </p>
-                            {% endif %}
-                            {% if listing.stage %}
-                                <p class="listing-stage">{{ listing.get_stage_display }}</p>
-                            {% endif %}
-                        </div>
-
-                        {% if listing.description %}
-                            <p class="listing-description">{{ listing.description|truncatechars:150 }}</p>
-                        {% endif %}
-
-                        <div class="listing-actions">
-                            <button
-                                type="button"
-                                class="listing-contact-button"
-                                data-listing-contact-target="listing-contact-{{ listing.id }}"
-                                aria-expanded="false"
-                            >
-                                Contact Agent
-                            </button>
-                        </div>
-                        <section class="listing-contact-panel" id="listing-contact-{{ listing.id }}" hidden aria-label="Contact details">
-                            <h3>{{ listing.agent.name }}</h3>
-                            {% if listing.agent.primary_phone %}
-                                <p><a href="tel:{{ listing.agent.primary_phone.phone_number }}">{{ listing.agent.primary_phone.phone_number }}</a></p>
-                            {% endif %}
-                            {% if listing.agent.contact_email %}
-                                <p class="muted"><a href="mailto:{{ listing.agent.contact_email }}">{{ listing.agent.contact_email }}</a></p>
-                            {% endif %}
-                        </section>
-                    </article>
-                {% endwith %}
+                {% include "includes/feed_listing_item.html" %}
             {% empty %}
-                <article class="card listing-card">
+                <article class="card listing-card listing-card-empty">
                     <div class="listing-card-header">
                         <h2>No current opportunities</h2>
                     </div>
@@ -795,18 +1172,20 @@
                 &times;
             </button>
         </div>
-        {% if active_filters %}
-            <div class="filter-chip-row filter-panel-chip-shell">
-                {% for active_filter in active_filters %}
-                    <a class="filter-chip" href="{{ active_filter.remove_url }}">
-                        <span>{{ active_filter.label }}</span>
-                        <span class="filter-chip-x" aria-hidden="true">&times;</span>
-                    </a>
-                {% endfor %}
-                <a class="filter-chip filter-chip-clear" href="{{ clear_filters_url }}">Clear All</a>
-            </div>
-        {% endif %}
-        {% include "includes/filter_form.html" %}
+        <div class="filter-drawer-body">
+            {% if active_filters %}
+                <div class="filter-chip-row filter-panel-chip-shell">
+                    {% for active_filter in active_filters %}
+                        <a class="filter-chip" href="{{ active_filter.remove_url }}">
+                            <span>{{ active_filter.label }}</span>
+                            <span class="filter-chip-x" aria-hidden="true">&times;</span>
+                        </a>
+                    {% endfor %}
+                    <a class="filter-chip filter-chip-clear" href="{{ clear_filters_url }}">Clear All</a>
+                </div>
+            {% endif %}
+            {% include "includes/filter_form.html" %}
+        </div>
     </aside>
 </div>
 
@@ -867,6 +1246,15 @@
         const filterOverlay = document.getElementById("filter-overlay");
         const listingOverlay = document.getElementById("listing-overlay");
         const accountOverlay = document.getElementById("account-overlay");
+        const mobileSaveIntentTrigger = document.getElementById("mobile-save-intent-trigger");
+        const mobileSaveIntentPanel = document.getElementById("mobile-save-intent-panel");
+        const mobileSaveIntentClose = document.getElementById("mobile-save-intent-close");
+        const mobileSaveIntentNotifications = mobileSaveIntentPanel
+            ? mobileSaveIntentPanel.querySelector("input[name='notifications_enabled']")
+            : null;
+        const collectionChoiceForm = mobileSaveIntentPanel
+            ? mobileSaveIntentPanel.querySelector("[data-collection-choice-form]")
+            : null;
 
         function setDesktopRailState(isExpanded) {
             if (!appBody || !desktopToggle) {
@@ -884,6 +1272,34 @@
             overlay.setAttribute("aria-hidden", isOpen ? "false" : "true");
             if (overlay === filterOverlay && appBody && window.innerWidth >= 768) {
                 appBody.classList.toggle("is-desktop-filter-open", isOpen);
+            }
+        }
+
+        function setMobileSaveIntentState(isOpen) {
+            if (!mobileSaveIntentPanel || !mobileSaveIntentTrigger) {
+                return;
+            }
+            mobileSaveIntentPanel.classList.toggle("is-open", isOpen);
+            mobileSaveIntentTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        }
+
+        function syncCollectionChoiceField() {
+            if (!collectionChoiceForm) {
+                return;
+            }
+            const newCollectionField = collectionChoiceForm.querySelector("[data-new-collection-field]");
+            const newCollectionInput = newCollectionField ? newCollectionField.querySelector("input") : null;
+            const selectedChoice = collectionChoiceForm.querySelector("input[name='collection_choice']:checked");
+            const shouldShow = !!(selectedChoice && selectedChoice.value === "__new__");
+            if (!newCollectionField) {
+                return;
+            }
+            newCollectionField.hidden = !shouldShow;
+            if (shouldShow && newCollectionInput) {
+                window.requestAnimationFrame(() => {
+                    newCollectionInput.focus();
+                    newCollectionInput.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                });
             }
         }
 
@@ -905,6 +1321,30 @@
         document.querySelectorAll(".open-account-panel").forEach((button) => {
             button.addEventListener("click", () => setOverlayState(accountOverlay, true));
         });
+
+        if (mobileSaveIntentTrigger) {
+            mobileSaveIntentTrigger.addEventListener("click", () => {
+                if (mobileSaveIntentNotifications) {
+                    mobileSaveIntentNotifications.checked = true;
+                }
+                setMobileSaveIntentState(!mobileSaveIntentPanel.classList.contains("is-open"));
+            });
+        }
+
+        if (mobileSaveIntentClose) {
+            mobileSaveIntentClose.addEventListener("click", () => {
+                setMobileSaveIntentState(false);
+            });
+        }
+
+        if (collectionChoiceForm) {
+            collectionChoiceForm.addEventListener("change", (event) => {
+                if (event.target && event.target.name === "collection_choice") {
+                    syncCollectionChoiceField();
+                }
+            });
+            syncCollectionChoiceField();
+        }
 
         document.querySelectorAll("[data-close-overlay]").forEach((button) => {
             button.addEventListener("click", () => {
