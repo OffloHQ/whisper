@@ -4,61 +4,207 @@
 {% block page_header %}{% endblock %}
 
 {% block content %}
+<style>
+.request-detail-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.request-detail-columns {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.request-detail-list {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+
+.request-detail-history-item {
+    padding: 0.75rem 0;
+    border-top: 1px solid rgba(31, 26, 20, 0.08);
+}
+
+.request-detail-history-item:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+</style>
 <section class="card" style="display:grid; gap:1rem; margin:2rem auto 0; max-width:60rem;">
     <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center;">
         <div>
             <h1 style="margin:0;">{{ access_request.full_name|default:access_request.email }}</h1>
             <p class="muted" style="margin:0.35rem 0 0;">{{ access_request.email }}</p>
+            {% if display_state %}
+                <p class="muted" style="margin:0.35rem 0 0;">{{ display_state }}</p>
+            {% endif %}
         </div>
         <a href="{{ return_to_queue_url }}" style="text-decoration:none;">Back</a>
     </div>
-    <div class="card" style="margin:0;">
-        <div>Status: {{ access_request.get_decision_status_display }}</div>
-        <div>Queue: {{ access_request.get_queue_type_display|default:"-" }}</div>
-        <div>Reason: {{ access_request.get_reason_code_display|default:"-" }}</div>
-        <div>Verification: {{ access_request.get_verification_status_display }}</div>
-        <div>Provider: {{ access_request.verification_provider|default:"-" }}</div>
-        <div>State: {{ access_request.state|default:"-" }}</div>
-        <div>County: {{ access_request.county|default:"-" }}</div>
-        <div>Borough: {{ access_request.borough|default:"-" }}</div>
-        <div>Market Area: {{ access_request.market_area|default:"-" }}</div>
-        <div>License Number: {{ access_request.license_number|default:"-" }}</div>
-        <div>Verification Attempted: {% if access_request.verification_attempted_at %}{{ access_request.verification_attempted_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
-        <div>Reviewed At: {% if access_request.reviewed_at %}{{ access_request.reviewed_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
-        <div>Reviewed By: {% if access_request.reviewed_by %}{{ access_request.reviewed_by.get_username }}{% else %}-{% endif %}</div>
-        <div>Approval Email Sent: {% if access_request.approval_email_sent_at %}{{ access_request.approval_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
-        <div>Rejection Email Sent: {% if access_request.rejection_email_sent_at %}{{ access_request.rejection_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
-        <div>Waitlist Email Sent: {% if access_request.waitlist_email_sent_at %}{{ access_request.waitlist_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
-        <div>Last Notification: {{ access_request.get_last_notification_type_display|default:"-" }}{% if access_request.last_notification_sent_at %} · {{ access_request.last_notification_sent_at|date:"M j, Y g:i A" }}{% endif %}</div>
-        <div>Review Notes: {{ access_request.manual_decision_reason|default:"-" }}</div>
-    </div>
-    {% if access_request.verification_payload %}
-        <div class="card" style="margin:0;">
-            <strong>Verification Payload Summary</strong>
-            <pre style="white-space:pre-wrap; overflow-wrap:anywhere; margin:0.75rem 0 0;">{{ access_request.verification_payload }}</pre>
+    <div class="request-detail-grid">
+        <div class="request-detail-columns">
+            <div class="card" style="margin:0;">
+                <strong>Status Summary</strong>
+                <div class="request-detail-list">
+                    <div>Queue Type: {{ access_request.get_queue_type_display|default:"-" }}</div>
+                    <div>Decision Status: {{ access_request.get_decision_status_display }}</div>
+                    <div>Verified: {% if agent_account and agent_account.is_verified %}Yes{% else %}No{% endif %}</div>
+                    <div>Active: {% if agent_account and agent_account.is_active %}Yes{% else %}No{% endif %}</div>
+                    <div>Signup Status: {% if agent_account %}{{ agent_account.get_signup_status_display }}{% else %}-{% endif %}</div>
+                    <div>Access Revoked: {% if access_request.access_terminated_at %}{{ access_request.access_terminated_at|date:"M j, Y g:i A" }}{% else %}No{% endif %}</div>
+                </div>
+            </div>
+            <div class="card" style="margin:0;">
+                <strong>Identity</strong>
+                <div class="request-detail-list">
+                    <div>Name: {{ access_request.full_name|default:"-" }}</div>
+                    <div>Email: {{ access_request.email }}</div>
+                    <div>State: {{ display_state|default:"-" }}</div>
+                    <div>License Number: {{ access_request.license_number|default:"-" }}</div>
+                </div>
+            </div>
+            <div class="card" style="margin:0;">
+                <strong>Timeline &amp; Email Activity</strong>
+                <div class="request-detail-list">
+                    <div>Created / Requested At: {{ access_request.created_at|date:"M j, Y g:i A" }}</div>
+                    <div>Days in Current Status (best available): {% if status_summary.days_in_current_status is not None %}{{ status_summary.days_in_current_status }}{% else %}-{% endif %}</div>
+                    <div>Status Since (best available): {% if status_summary.status_started_at %}{{ status_summary.status_started_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+                    <div>Last Event: {% if status_summary.last_event_at %}{{ status_summary.last_event_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+                    <div>Total Emails Sent: {{ email_activity_summary.total_emails_sent }}</div>
+                    <div>Last Email Sent: {% if email_activity_summary.last_email_sent_at %}{{ email_activity_summary.last_email_sent_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+                    <div>Last Email Type: {{ email_activity_summary.last_email_type }}</div>
+                </div>
+            </div>
         </div>
-    {% endif %}
-    {% if can_activate_request or can_reject_request %}
-        <div style="display:grid; gap:0.75rem; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
+
+        <div class="card" style="margin:0;">
+            <strong>Why They Are Here</strong>
+            <div class="request-detail-columns" style="margin-top:0.75rem;">
+                <div class="request-detail-list" style="margin-top:0;">
+                    <div>Reason: {{ access_request.get_reason_code_display|default:"-" }}</div>
+                    <div>Verification Status: {{ access_request.get_verification_status_display }}</div>
+                    <div>Provider: {{ access_request.verification_provider|default:"-" }}</div>
+                    <div>Verification Finding: {{ access_request.verification_reason|default:"-" }}</div>
+                    <div>Review Note: {{ access_request.manual_decision_reason|default:"-" }}</div>
+                </div>
+                <div class="request-detail-list" style="margin-top:0;">
+                    <div>Verification Attempted: {% if access_request.verification_attempted_at %}{{ access_request.verification_attempted_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+                    <div>Reviewed By: {% if access_request.reviewed_by %}{{ access_request.reviewed_by.get_username }}{% else %}-{% endif %}</div>
+                    <div>Reviewed At: {% if access_request.reviewed_at %}{{ access_request.reviewed_at|date:"M j, Y g:i A" }}{% else %}-{% endif %}</div>
+                    <div>Evidence Reference: {{ access_request.manual_verification_evidence_ref|default:"-" }}</div>
+                    {% if access_request.matched_license_name or access_request.matched_license_type or access_request.matched_expiration_date or access_request.matched_business_name %}
+                        <div>
+                            Matched Record:
+                            {{ access_request.matched_license_name|default:access_request.matched_business_name|default:"-" }}
+                            {% if access_request.matched_license_type %} · {{ access_request.matched_license_type }}{% endif %}
+                            {% if access_request.matched_expiration_date %} · Expires {{ access_request.matched_expiration_date|date:"M j, Y" }}{% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if can_activate_request or can_reject_request %}
+        <div class="card" style="margin:0;">
+            <strong>Actions</strong>
+            <div style="display:grid; gap:0.75rem; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); margin-top:0.75rem;">
             {% if can_activate_request %}
                 <form method="post" action="{% url 'intake_verify_request' access_request.id %}" class="card" style="margin:0;">
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ return_to_queue_url }}">
-                    <label for="verify-reason">{% if access_request.queue_type == 'waitlist' %}Activation note{% else %}Review note{% endif %}</label>
+                    {% if access_request.queue_type == 'waitlist' %}
+                        <label for="waitlist-outreach-type">Waitlist notification</label>
+                        <select id="waitlist-outreach-type" name="outreach_type">
+                            <option value="coming_soon">Coming Soon</option>
+                            <option value="open_signup">Open in Your Area — Sign Up Now</option>
+                        </select>
+                    {% endif %}
+                    {% if access_request.queue_type == 'manual_review' %}
+                        <label for="verify-evidence" style="margin-top:0.75rem;">Evidence reference</label>
+                        <input id="verify-evidence" type="text" name="evidence_reference" value="{{ access_request.manual_verification_evidence_ref }}" placeholder="Screenshot filename, doc link, or evidence note">
+                    {% endif %}
+                    <label for="verify-reason" style="margin-top:0.75rem;">{% if access_request.queue_type == 'waitlist' %}Waitlist update note{% else %}Reviewer note{% endif %}</label>
                     <textarea id="verify-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
-                    <button type="submit" style="margin-top:0.75rem;">Activate Access</button>
+                    <button type="submit" style="margin-top:0.75rem;">{% if access_request.queue_type == 'waitlist' %}Send Waitlist Notification{% elif access_request.decision_status == 'approved' %}Resend Next Step Email{% else %}Manually Verify &amp; Send Next Step{% endif %}</button>
+                </form>
+            {% endif %}
+            {% if access_request.queue_type == 'waitlist' and not access_request.waitlist_removed_at %}
+                <form method="post" action="{% url 'intake_activate_waitlist_requests' %}" class="card" style="margin:0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                    <input type="hidden" name="bulk_action" value="remove">
+                    <input type="hidden" name="request_ids" value="{{ access_request.id }}">
+                    <label for="remove-reason">Removal note</label>
+                    <textarea id="remove-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
+                    <button type="submit" style="margin-top:0.75rem;">Remove from Waitlist</button>
                 </form>
             {% endif %}
             {% if can_reject_request %}
                 <form method="post" action="{% url 'intake_reject_request' access_request.id %}" class="card" style="margin:0;">
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ return_to_queue_url }}">
-                    <label for="reject-reason">Rejection reason</label>
+                    <label for="reject-evidence">Evidence reference</label>
+                    <input id="reject-evidence" type="text" name="evidence_reference" value="{{ access_request.manual_verification_evidence_ref }}" placeholder="Screenshot filename, doc link, or evidence note">
+                    <label for="reject-reason" style="margin-top:0.75rem;">Verification failure reason</label>
                     <textarea id="reject-reason" name="decision_reason" rows="3">{{ access_request.manual_decision_reason }}</textarea>
-                    <button type="submit" style="margin-top:0.75rem;">Reject</button>
+                    <button type="submit" style="margin-top:0.75rem;">Record Verification Failure</button>
                 </form>
             {% endif %}
+            </div>
         </div>
-    {% endif %}
+        {% endif %}
+
+        {% if can_terminate_access %}
+        <div class="card" style="margin:0; border-color:rgba(122, 53, 35, 0.25);">
+            <strong>Revoke Access</strong>
+            <div class="muted" style="margin-top:0.75rem;">This removes the user’s current Whisper access. It does not delete the record or erase history.</div>
+            <form method="post" action="{% url 'intake_terminate_access' access_request.id %}" style="display:grid; gap:0.75rem; margin-top:0.75rem;">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                <div>
+                    <label for="terminate-reason">Reason</label>
+                    <select id="terminate-reason" name="termination_reason" required>
+                        <option value="">Select a reason</option>
+                        {% for value, label in termination_reason_options %}
+                            <option value="{{ value }}"{% if access_request.access_termination_reason == value %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="terminate-note">Internal note</label>
+                    <textarea id="terminate-note" name="termination_note" rows="3" placeholder="Optional internal note for the audit trail">{{ access_request.access_termination_note }}</textarea>
+                </div>
+                <label style="display:flex; gap:0.55rem; align-items:flex-start;">
+                    <input type="checkbox" name="confirm_termination" required style="margin-top:0.2rem;">
+                    <span>I understand this will revoke current Whisper access and send the user a termination email.</span>
+                </label>
+                <button type="submit">Revoke Access</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="card" style="margin:0;">
+            <strong>History</strong>
+            {% if history_items %}
+                <div style="display:grid; gap:0.75rem; margin-top:0.75rem;">
+                    {% for item in history_items %}
+                        <div class="request-detail-history-item">
+                            <div>{{ item.label }} · {{ item.at|date:"M j, Y g:i A" }}</div>
+                            {% if item.meta %}
+                                <div class="muted" style="margin-top:0.2rem;">{{ item.meta }}</div>
+                            {% endif %}
+                            {% if item.note %}
+                                <div class="muted" style="margin-top:0.2rem;">{{ item.note }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="muted" style="margin-top:0.75rem;">No review or outreach history yet.</div>
+            {% endif %}
+        </div>
+    </div>
 </section>
 {% endblock %}

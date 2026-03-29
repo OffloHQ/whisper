@@ -1,4 +1,18 @@
-<p>Whisper is live for you now.</p>
-<p>Your access has been activated. Use the secure sign-in link below to get into Whisper.</p>
-<p><a href="{{ sign_in_url }}">Sign in to Whisper</a></p>
-<p>If you have not yet accepted the Terms of Use and Privacy Policy, Whisper will prompt you after sign-in.</p>
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<div style="text-align:center;">
+  <div style="font-size:24px; line-height:1.3; font-weight:600; margin:0 0 14px;">
+    Whisper is live for you now
+  </div>
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:0 auto; max-width:420px;">
+    Your access has been activated. Use the secure link below to sign in.
+  </div>
+  <div style="margin:24px 0 0;">
+    <a href="{{ sign_in_url }}" style="display:inline-block; padding:12px 22px; border:1px solid #1f1a14; color:#ffffff; background-color:#1f1a14; text-decoration:none; font-size:15px; font-weight:600;">Sign in to Whisper</a>
+  </div>
+  <div style="font-size:14px; line-height:1.7; color:#7a7065; margin:18px auto 0; max-width:420px;">
+    If you have not yet accepted the Terms of Use and Privacy Policy, Whisper will prompt you after sign-in.
+  </div>
+</div>
+{% endblock %}

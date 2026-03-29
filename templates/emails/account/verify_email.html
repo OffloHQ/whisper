@@ -1,3 +1,15 @@
-<p>Hi {{ agent_name }},</p>
-<p>Please verify your Whisper email.</p>
-<p><a href="{{ verification_url }}">Verify email</a></p>
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<div style="text-align:center;">
+  <div style="font-size:24px; line-height:1.3; font-weight:600; margin:0 0 14px;">
+    Verify your email
+  </div>
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:0 auto; max-width:420px;">
+    Hi {{ agent_name }}, use the secure link below to verify your Whisper email.
+  </div>
+  <div style="margin:24px 0 0;">
+    <a href="{{ verification_url }}" style="display:inline-block; padding:12px 22px; border:1px solid #1f1a14; color:#ffffff; background-color:#1f1a14; text-decoration:none; font-size:15px; font-weight:600;">Verify email</a>
+  </div>
+</div>
+{% endblock %}

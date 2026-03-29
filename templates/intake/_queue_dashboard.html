@@ -215,6 +215,52 @@
         </div>
     </form>
 
+    {% if show_open_state_action %}
+        <div class="card" style="display:grid; gap:0.85rem; margin:0;">
+            <div>
+                <strong>State Update</strong>
+                <p class="muted" style="margin:0.35rem 0 0;">Send a waitlist outreach email to everyone currently subscribed in a selected state.</p>
+            </div>
+            {% if state_groups %}
+                <div style="display:flex; flex-wrap:wrap; gap:0.65rem;">
+                    {% for group in state_groups %}
+                        <a href="{{ group.url }}" style="text-decoration:none;">
+                            {{ group.label }} ({{ group.count }})
+                        </a>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <form method="post" action="{% url 'intake_open_waitlist_state' %}" class="admin-bulk-row">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                <div>
+                    <label for="open-state">State</label>
+                    <select id="open-state" name="state">
+                        <option value="">Choose a state</option>
+                        {% for option in state_options %}
+                            <option value="{{ option.value }}"{% if selected_state == option.value %} selected{% endif %}>{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="open-state-outreach">Update Type</label>
+                    <select id="open-state-outreach" name="outreach_type">
+                        {% for option in waitlist_outreach_options %}
+                            <option value="{{ option.value }}">{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="open-state-note">Note</label>
+                    <input id="open-state-note" type="text" name="decision_reason" placeholder="Optional note for this state update">
+                </div>
+                <div>
+                    <button type="submit">Send State Update</button>
+                </div>
+            </form>
+        </div>
+    {% endif %}
+
     <form method="post" action="{% url bulk_form_action %}" style="display:grid; gap:0.75rem;">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ return_to_queue_url }}">
@@ -251,7 +297,7 @@
                         <th><a href="{{ sort_name_query }}">Name</a></th>
                         <th>Email</th>
                         <th><a href="{{ sort_state_query }}">State</a></th>
-                        <th><a href="{{ sort_status_query }}">Status</a></th>
+                        <th><a href="{{ sort_status_query }}">Queue / Decision</a></th>
                         <th>Last Email</th>
                         <th>Reason</th>
                         <th><a href="{{ sort_date_query }}">Date</a></th>
@@ -274,9 +320,18 @@
                             <td>{{ access_request.email }}</td>
                             <td>{{ access_request.display_state|default:"-" }}</td>
                             <td>
-                                <span class="status-pill {{ access_request.display_status_class|default:'default' }}">
-                                    {{ access_request.display_status }}
-                                </span>
+                                <div style="display:grid; gap:0.35rem;">
+                                    <span class="status-pill {{ access_request.display_status_class|default:'default' }}">
+                                        {{ access_request.get_queue_type_display|default:"-" }}
+                                    </span>
+                                    <span class="muted" style="font-size:0.82rem;">{{ access_request.get_decision_status_display }}</span>
+                                    {% if access_request.waitlist_unsubscribed_at %}
+                                        <span class="muted" style="font-size:0.82rem;">Unsubscribed</span>
+                                    {% endif %}
+                                    {% if access_request.waitlist_outreach_type %}
+                                        <span class="muted" style="font-size:0.82rem;">{{ access_request.get_waitlist_outreach_type_display }}</span>
+                                    {% endif %}
+                                </div>
                             </td>
                             <td>{{ access_request.last_email_display }}</td>
                             <td>{{ access_request.get_reason_code_display|default:"-" }}</td>
@@ -288,36 +343,44 @@
                                             <form method="post" action="{% url 'intake_verify_request' access_request.id %}">
                                                 {% csrf_token %}
                                                 <input type="hidden" name="next" value="{{ return_to_queue_url }}">
-                                                <button type="submit">Approve / Activate</button>
+                                                <button type="submit">Manually Verify &amp; Send Next Step</button>
                                             </form>
 
                                             <form method="post" action="{% url 'intake_reject_request' access_request.id %}">
                                                 {% csrf_token %}
                                                 <input type="hidden" name="next" value="{{ return_to_queue_url }}">
-                                                <button type="submit">Reject</button>
+                                                <button type="submit">Record Verification Failure</button>
                                             </form>
                                         {% endif %}
                                     {% else %}
                                         {% if access_request.queue_type == 'waitlist' or access_request.queue_type == 'manual_review' %}
-                                            <form method="post" action="{% url 'intake_verify_request' access_request.id %}">
-                                                {% csrf_token %}
-                                                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
-                                                <button type="submit">Activate</button>
-                                            </form>
-                                        {% endif %}
-
-                                        {% if show_invite_action and access_request.can_resend_access_email %}
-                                            <form method="post" action="{% url 'intake_activate_waitlist_requests' %}">
-                                                {% csrf_token %}
-                                                <input type="hidden" name="next" value="{{ return_to_queue_url }}">
-                                                <input type="hidden" name="bulk_action" value="invite">
-                                                <input type="hidden" name="request_ids" value="{{ access_request.id }}">
-                                                <button type="submit">Resend Access Email</button>
-                                            </form>
+                                            {% if access_request.queue_type == 'manual_review' %}
+                                                <form method="post" action="{% url 'intake_verify_request' access_request.id %}">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                    <button type="submit">Manually Verify &amp; Send Next Step</button>
+                                                </form>
+                                            {% elif access_request.can_send_waitlist_update %}
+                                                <form method="post" action="{% url 'intake_verify_request' access_request.id %}">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                    <input type="hidden" name="outreach_type" value="coming_soon">
+                                                    <button type="submit">Send Update</button>
+                                                </form>
+                                            {% endif %}
+                                            {% if access_request.can_remove_from_waitlist %}
+                                                <form method="post" action="{% url 'intake_activate_waitlist_requests' %}">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="next" value="{{ return_to_queue_url }}">
+                                                    <input type="hidden" name="bulk_action" value="remove">
+                                                    <input type="hidden" name="request_ids" value="{{ access_request.id }}">
+                                                    <button type="submit">Remove</button>
+                                                </form>
+                                            {% endif %}
                                         {% endif %}
                                     {% endif %}
 
-                                    <a href="{% url 'intake_request_detail' access_request.id %}?next={{ return_to_queue_url|urlencode }}">Open</a>
+                                    <a href="{% url 'intake_request_detail' access_request.id %}?next={{ return_to_queue_url|urlencode }}">View</a>
                                 </div>
                             </td>
                         </tr>

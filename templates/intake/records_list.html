@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Records | Whisper{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<style>
+.records-page {
+    display: grid;
+    gap: 1rem;
+    max-width: 72rem;
+    margin: 2rem auto 0;
+}
+
+.records-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+}
+
+.records-controls {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.records-search-row,
+.records-filter-grid,
+.records-pagination {
+    display: grid;
+    gap: 0.85rem;
+    align-items: end;
+}
+
+.records-search-row {
+    grid-template-columns: minmax(260px, 2fr) auto auto;
+}
+
+.records-filter-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.records-search-field {
+    max-width: 34rem;
+}
+
+.records-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.records-results-card {
+    margin: 0;
+    overflow: hidden;
+}
+
+.records-table-wrap {
+    overflow-x: auto;
+    border-top: 1px solid rgba(31, 26, 20, 0.08);
+    border-bottom: 1px solid rgba(31, 26, 20, 0.08);
+}
+
+.records-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.records-table th,
+.records-table td {
+    padding: 0.75rem 0.65rem;
+    border-bottom: 1px solid rgba(31, 26, 20, 0.08);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.records-table td {
+    overflow-wrap: anywhere;
+}
+
+.records-table th {
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.records-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    color: var(--muted);
+    font-size: 0.92rem;
+    padding: 1rem 1.1rem 0;
+}
+
+.records-pagination {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 0 1.1rem 1rem;
+}
+
+.records-pagination-nav {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+@media (max-width: 980px) {
+    .records-search-row,
+    .records-pagination {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .records-header,
+    .records-pagination {
+        align-items: flex-start;
+    }
+
+    .records-actions {
+        justify-content: flex-start;
+    }
+}
+</style>
+
+<section class="records-page">
+    <div class="records-header">
+        <div>
+            <h1 style="margin:0;">Records</h1>
+            <p class="muted" style="margin:0.35rem 0 0;">Search system-wide records and open the detail page for full review or outreach history.</p>
+        </div>
+        <a href="{% url 'intake_home' %}" style="text-decoration:none;">Back</a>
+    </div>
+
+    <form method="get" class="card records-controls" style="margin:0; padding:1.1rem;">
+        <div class="records-search-row">
+            <div class="records-search-field">
+                <label for="records-search">Search</label>
+                <input id="records-search" type="search" name="q" value="{{ search_query }}" placeholder="Name, email, state, or license number">
+            </div>
+            <div class="records-actions">
+                <button type="submit">Apply Filters</button>
+            </div>
+            <div class="records-actions">
+                {% if filters_active %}
+                    <a href="{{ clear_filters_url }}" style="text-decoration:none;">Clear Filters</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="records-filter-grid">
+            <div>
+                <label for="records-queue">Queue</label>
+                <select id="records-queue" name="queue_type">
+                    <option value="">All queues</option>
+                    {% for value, label in queue_options %}
+                        <option value="{{ value }}"{% if selected_queue_type == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="records-decision">Decision</label>
+                <select id="records-decision" name="decision_status">
+                    <option value="">All decisions</option>
+                    {% for value, label in decision_status_options %}
+                        <option value="{{ value }}"{% if selected_decision_status == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="records-verified">Verified</label>
+                <select id="records-verified" name="verified">
+                    <option value="">All</option>
+                    <option value="yes"{% if selected_verified == "yes" %} selected{% endif %}>Yes</option>
+                    <option value="no"{% if selected_verified == "no" %} selected{% endif %}>No</option>
+                </select>
+            </div>
+            <div>
+                <label for="records-active">Active</label>
+                <select id="records-active" name="active">
+                    <option value="">All</option>
+                    <option value="yes"{% if selected_active == "yes" %} selected{% endif %}>Yes</option>
+                    <option value="no"{% if selected_active == "no" %} selected{% endif %}>No</option>
+                </select>
+            </div>
+            <div>
+                <label for="records-state">State</label>
+                <select id="records-state" name="state">
+                    <option value="">All states</option>
+                    {% for option in state_options %}
+                        <option value="{{ option.value }}"{% if selected_state == option.value %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="records-unsubscribed">Unsubscribed</label>
+                <select id="records-unsubscribed" name="unsubscribed">
+                    <option value="">All</option>
+                    <option value="yes"{% if selected_unsubscribed == "yes" %} selected{% endif %}>Yes</option>
+                    <option value="no"{% if selected_unsubscribed == "no" %} selected{% endif %}>No</option>
+                </select>
+            </div>
+        </div>
+    </form>
+
+    <div class="card records-results-card">
+        <div class="records-table-wrap">
+            <table class="records-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>State</th>
+                        <th>Queue</th>
+                        <th>Decision</th>
+                        <th>Verified</th>
+                        <th>Active</th>
+                        <th>Last Event</th>
+                        <th>View</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for access_request in requests %}
+                        <tr>
+                            <td>{{ access_request.display_name }}</td>
+                            <td>{{ access_request.email }}</td>
+                            <td>{{ access_request.display_state|default:"-" }}</td>
+                            <td>{{ access_request.get_queue_type_display|default:"-" }}</td>
+                            <td>{{ access_request.get_decision_status_display }}</td>
+                            <td>{% if access_request.display_verified %}Yes{% else %}No{% endif %}</td>
+                            <td>{% if access_request.display_active %}Yes{% else %}No{% endif %}</td>
+                            <td>{{ access_request.display_last_event }}</td>
+                            <td><a href="{% url 'intake_request_detail' access_request.id %}?next={{ return_to_queue_url|urlencode }}">View</a></td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="9" class="muted">No records matched the current search.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="records-meta">
+            <div>
+                {% if total_count %}
+                    Showing {{ showing_start }}-{{ showing_end }} of {{ total_count }}
+                {% else %}
+                    Showing 0 of 0
+                {% endif %}
+            </div>
+            <div>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+        </div>
+
+        <div class="records-pagination">
+            <div></div>
+            <div class="records-pagination-nav">
+                {% if page_obj.has_previous %}
+                    <a href="{{ prev_page_query }}">Previous</a>
+                {% else %}
+                    <span class="muted">Previous</span>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <a href="{{ next_page_query }}">Next</a>
+                {% else %}
+                    <span class="muted">Next</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

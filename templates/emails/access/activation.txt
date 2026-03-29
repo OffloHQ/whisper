@@ -1,7 +1,14 @@
 Whisper is live for you now.
 
-Your access has been activated. Use the secure sign-in link below to get into Whisper.
+Your access has been activated. Use the secure link below to sign in.
 
+Sign in to Whisper:
 {{ sign_in_url }}
 
 If you have not yet accepted the Terms of Use and Privacy Policy, Whisper will prompt you after sign-in.
+
+--
+Whisper — private agent network
+Operated by Barder Works LLC
+1112 Wilmot Rd STE 91H
+Scarsdale, NY 10583

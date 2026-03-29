@@ -1,5 +1,13 @@
-Unfortunately, our team could not verify your license number.
+We weren’t able to verify your license information.
 
-Thank you for your interest in Whisper, but the site is for Verified Real Estate Professionals only.
+{% if review_reason %}
+Review note: {{ review_reason }}
 
-If you feel we have made an error, or would like to correct information, please email us at Support@whispered.homes
+{% endif %}
+If you believe this was a mistake or want to correct your information, email Support@whispered.homes.
+
+--
+Whisper — private agent network
+Operated by Barder Works LLC
+1112 Wilmot Rd STE 91H
+Scarsdale, NY 10583

@@ -1,0 +1,20 @@
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<div style="text-align:center;">
+  <div style="font-size:24px; line-height:1.3; font-weight:600; margin:0 0 14px;">
+    Whisper access has been terminated
+  </div>
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:0 auto; max-width:430px;">
+    Your access to Whisper has been revoked.
+  </div>
+  {% if termination_reason %}
+    <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:18px auto 0; max-width:430px;">
+      Reason category: {{ termination_reason }}
+    </div>
+  {% endif %}
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:18px auto 0; max-width:430px;">
+    If you believe this was sent in error, reply to this email for follow-up.
+    </div>
+</div>
+{% endblock %}

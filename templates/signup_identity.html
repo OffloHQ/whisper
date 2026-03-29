@@ -179,7 +179,36 @@
                         <input type="email" value="{{ signup_email }}" readonly>
                     </p>
 
-                    {{ form.as_p }}
+                    <p>
+                        <label for="{{ form.full_name.id_for_label }}">{{ form.full_name.label }}</label>
+                        {{ form.full_name }}
+                        {% if form.full_name.errors %}
+                        <div class="access-gate-errors" style="margin-top:0.5rem;">
+                            {{ form.full_name.errors }}
+                        </div>
+                        {% endif %}
+                    </p>
+
+                    <p>
+                        <label for="{{ form.state.id_for_label }}">{{ form.state.label }}</label>
+                        {{ form.state }}
+                        <small class="access-inline-note">Not licensed in New York yet? <a href="{% url 'state_waitlist' %}">Join the waitlist for your state.</a></small>
+                        {% if form.state.errors %}
+                        <div class="access-gate-errors" style="margin-top:0.5rem;">
+                            {{ form.state.errors }}
+                        </div>
+                        {% endif %}
+                    </p>
+
+                    <p>
+                        <label for="{{ form.license_number.id_for_label }}">{{ form.license_number.label }}</label>
+                        {{ form.license_number }}
+                        {% if form.license_number.errors %}
+                        <div class="access-gate-errors" style="margin-top:0.5rem;">
+                            {{ form.license_number.errors }}
+                        </div>
+                        {% endif %}
+                    </p>
 
                     <button type="submit">Verify License</button>
                 </form>

@@ -4,13 +4,27 @@ from .render import render_email
 
 def build_access_request_signup_email(*, signup_url):
     product_name = getattr(settings, "PRODUCT_NAME", "Whisper")
-    subject = f"Continue your {product_name} signup"
+    subject = f"Complete your {product_name} signup"
     html_body, text_body = render_email(
         html_template="emails/access/request_access.html",
         text_template="emails/access/request_access.txt",
         context={
             "signup_url": signup_url,
             "site_base_url": settings.SITE_BASE_URL,
+        },
+    )
+    return subject, html_body, text_body
+
+
+def build_access_request_signup_reminder_email(*, signup_url, reminder_day):
+    subject = "Reminder: complete your Whisper signup"
+    html_body, text_body = render_email(
+        html_template="emails/access/request_access_reminder.html",
+        text_template="emails/access/request_access_reminder.txt",
+        context={
+            "signup_url": signup_url,
+            "site_base_url": settings.SITE_BASE_URL,
+            "reminder_day": reminder_day,
         },
     )
     return subject, html_body, text_body
@@ -29,11 +43,37 @@ def build_access_request_manual_approval_email(*, continuation_link):
     return subject, html_body, text_body
 
 
-def build_access_request_rejection_email():
+def build_access_request_rejection_email(*, review_reason=""):
     subject = "Update on your Whisper access request"
     html_body, text_body = render_email(
         html_template="emails/access/rejection.html",
         text_template="emails/access/rejection.txt",
+        context={
+            "site_base_url": settings.SITE_BASE_URL,
+            "review_reason": review_reason,
+        },
+    )
+    return subject, html_body, text_body
+
+
+def build_access_request_terminated_email(*, termination_reason=""):
+    subject = "Whisper Access Terminated"
+    html_body, text_body = render_email(
+        html_template="emails/access/terminated.html",
+        text_template="emails/access/terminated.txt",
+        context={
+            "site_base_url": settings.SITE_BASE_URL,
+            "termination_reason": termination_reason,
+        },
+    )
+    return subject, html_body, text_body
+
+
+def build_access_request_waitlist_email():
+    subject = "You’re on the list for Whisper"
+    html_body, text_body = render_email(
+        html_template="emails/access/waitlist.html",
+        text_template="emails/access/waitlist.txt",
         context={
             "site_base_url": settings.SITE_BASE_URL,
         },
@@ -41,13 +81,28 @@ def build_access_request_rejection_email():
     return subject, html_body, text_body
 
 
-def build_access_request_waitlist_email():
-    subject = "You’re on the Whisper waitlist"
+def build_waitlist_coming_soon_email(*, unsubscribe_url):
+    subject = "Whisper — Coming Soon"
     html_body, text_body = render_email(
-        html_template="emails/access/waitlist.html",
-        text_template="emails/access/waitlist.txt",
+        html_template="emails/access/waitlist_coming_soon.html",
+        text_template="emails/access/waitlist_coming_soon.txt",
         context={
             "site_base_url": settings.SITE_BASE_URL,
+            "unsubscribe_url": unsubscribe_url,
+        },
+    )
+    return subject, html_body, text_body
+
+
+def build_waitlist_open_signup_email(*, signup_url, unsubscribe_url):
+    subject = "Whisper — Open in Your Area"
+    html_body, text_body = render_email(
+        html_template="emails/access/waitlist_open_signup.html",
+        text_template="emails/access/waitlist_open_signup.txt",
+        context={
+            "site_base_url": settings.SITE_BASE_URL,
+            "signup_url": signup_url,
+            "unsubscribe_url": unsubscribe_url,
         },
     )
     return subject, html_body, text_body

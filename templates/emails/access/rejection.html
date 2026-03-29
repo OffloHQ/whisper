@@ -1,3 +1,20 @@
-<p>Unfortunately, our team could not verify your license number.</p>
-<p>Thank you for your interest in Whisper, but the site is for Verified Real Estate Professionals only.</p>
-<p>If you feel we have made an error, or would like to correct information, please email us at Support@whispered.homes</p>
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<div style="text-align:center;">
+  <div style="font-size:24px; line-height:1.3; font-weight:600; margin:0 0 14px;">
+    Update on your Whisper access request
+  </div>
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:0 auto; max-width:420px;">
+    We weren’t able to verify your license information.
+  </div>
+  {% if review_reason %}
+    <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:18px auto 0; max-width:420px;">
+      Review note: {{ review_reason }}
+    </div>
+  {% endif %}
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:18px auto 0; max-width:420px;">
+    If you believe this was a mistake or want to correct your information, email <a href="mailto:Support@whispered.homes" style="color:#1f1a14; text-decoration:underline;">Support@whispered.homes</a>.
+  </div>
+</div>
+{% endblock %}

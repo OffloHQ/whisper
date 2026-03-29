@@ -163,14 +163,16 @@ STATE_NAME_BY_CODE = {
 }
 
 
-def normalize_state_code(state: str) -> str:
+def normalize_state_code(state: Optional[str]) -> str:
+    if not state:
+        return ""
     normalized_state = " ".join(state.strip().lower().split())
     if not normalized_state:
         return ""
     return STATE_CODE_ALIASES.get(normalized_state, normalized_state.upper())
 
 
-def get_state_display_name(state: str) -> str:
+def get_state_display_name(state: Optional[str]) -> str:
     normalized_state = normalize_state_code(state)
     if not normalized_state:
         return ""

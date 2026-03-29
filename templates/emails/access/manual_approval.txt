@@ -1,3 +1,12 @@
-Great News, Our Team found your records. Please continue to the next step:
+We manually verified your information. Complete your contact details to continue.
 
+Access is still not granted until signup is completed.
+
+Continue signup:
 {{ continuation_link }}
+
+--
+Whisper — private agent network
+Operated by Barder Works LLC
+1112 Wilmot Rd STE 91H
+Scarsdale, NY 10583

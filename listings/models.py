@@ -130,6 +130,21 @@ class AccessRequest(models.Model):
         REJECTION = "rejection", "Rejection"
         WAITLIST = "waitlist", "Wait List"
 
+    class WaitlistOutreachType(models.TextChoices):
+        NONE = "", "None"
+        COMING_SOON = "coming_soon", "Coming Soon"
+        OPEN_SIGNUP = "open_signup", "Open in Your Area — Sign Up Now"
+        UNSUBSCRIBED = "unsubscribed", "Unsubscribed"
+        REMOVED = "removed", "Removed from Waitlist"
+
+    class TerminationReason(models.TextChoices):
+        POLICY_VIOLATION = "policy_violation", "Terms or policy violation"
+        VERIFICATION_CONCERN = "verification_concern", "Identity / verification concern"
+        DUPLICATE_INVALID = "duplicate_invalid", "Duplicate or invalid account"
+        BROKERAGE_AUTHORIZATION = "brokerage_authorization", "Brokerage / authorization issue"
+        ABUSE_OR_MISUSE = "abuse_or_misuse", "Abuse or misuse of the platform"
+        OTHER = "other", "Other"
+
     class VerificationStatus(models.TextChoices):
         PENDING = "pending", "Pending"
         VERIFIED = "verified", "Verified"
@@ -184,9 +199,47 @@ class AccessRequest(models.Model):
     approval_email_sent_at = models.DateTimeField(null=True, blank=True)
     rejection_email_sent_at = models.DateTimeField(null=True, blank=True)
     waitlist_email_sent_at = models.DateTimeField(null=True, blank=True)
+    waitlist_outreach_type = models.CharField(
+        max_length=32,
+        choices=WaitlistOutreachType.choices,
+        blank=True,
+        default=WaitlistOutreachType.NONE,
+    )
+    waitlist_outreach_sent_at = models.DateTimeField(null=True, blank=True)
+    waitlist_outreach_sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sent_waitlist_outreach_requests",
+    )
+    waitlist_unsubscribed_at = models.DateTimeField(null=True, blank=True)
+    waitlist_removed_at = models.DateTimeField(null=True, blank=True)
+    waitlist_removed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="removed_waitlist_requests",
+    )
+    access_terminated_at = models.DateTimeField(null=True, blank=True)
+    access_terminated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="terminated_access_requests",
+    )
+    access_termination_reason = models.TextField(blank=True)
+    access_termination_note = models.TextField(blank=True)
+    manual_verification_approved_at = models.DateTimeField(null=True, blank=True)
+    manual_verification_rejected_at = models.DateTimeField(null=True, blank=True)
+    manual_verification_evidence_ref = models.CharField(max_length=255, blank=True)
     last_notification_type = models.CharField(max_length=32, choices=NotificationType.choices, blank=True)
     last_notification_sent_at = models.DateTimeField(null=True, blank=True)
     signup_sent_at = models.DateTimeField(null=True, blank=True)
+    signup_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    signup_final_reminder_sent_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -234,6 +287,52 @@ class AccessRequest(models.Model):
             self.rejection_email_sent_at = when
         elif notification_type == self.NotificationType.WAITLIST:
             self.waitlist_email_sent_at = when
+
+    def record_waitlist_outreach(self, *, outreach_type, sent_by, when=None):
+        when = when or timezone.now()
+        self.waitlist_outreach_type = outreach_type
+        self.waitlist_outreach_sent_at = when
+        self.waitlist_outreach_sent_by = sent_by
+
+    def mark_waitlist_removed(self, *, removed_by, when=None, reason=""):
+        when = when or timezone.now()
+        self.waitlist_removed_at = when
+        self.waitlist_removed_by = removed_by
+        self.reviewed_at = when
+        self.reviewed_by = removed_by
+        self.manual_decision_reason = reason
+
+    def log_waitlist_outreach_event(self, *, outreach_type, sent_at=None, sent_by=None, note=""):
+        return self.waitlist_outreach_logs.create(
+            outreach_type=outreach_type,
+            sent_at=sent_at or timezone.now(),
+            sent_by=sent_by,
+            note=note,
+        )
+
+
+class WaitlistOutreachLog(models.Model):
+    access_request = models.ForeignKey(
+        AccessRequest,
+        on_delete=models.CASCADE,
+        related_name="waitlist_outreach_logs",
+    )
+    outreach_type = models.CharField(max_length=32, choices=AccessRequest.WaitlistOutreachType.choices)
+    sent_at = models.DateTimeField(default=timezone.now)
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="waitlist_outreach_logs_sent",
+    )
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-sent_at", "-id"]
+
+    def __str__(self):
+        return f"{self.access_request.email} ({self.outreach_type})"
 
 
 class AuthAccessToken(models.Model):

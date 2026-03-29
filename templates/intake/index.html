@@ -3,28 +3,46 @@
 {% block title %}Admin Portal | Whisper{% endblock %}
 {% block page_header %}{% endblock %}
 
+{% block extra_head %}
+    {{ block.super }}
+    <style>
+        .intake-home-grid {
+            display: grid;
+            gap: 0.85rem;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
 <section class="card" style="display:grid; gap:1rem; max-width:54rem; margin:2rem auto 0;">
     <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center;">
         <div>
             <h1 style="margin:0;">Admin Portal</h1>
-            <p class="muted" style="margin:0.35rem 0 0;">Queue operations for review, recovery, and access activation.</p>
+            <p class="muted" style="margin:0.35rem 0 0;">Review verification exceptions, manage waitlist outreach, and look up records across the system.</p>
         </div>
         <a href="{% url 'intake_logout' %}" style="text-decoration:none;">Sign Out</a>
     </div>
-    <div style="display:grid; gap:0.85rem; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));">
+    <div class="intake-home-grid">
         {% if can_review_manual_requests %}
             <a href="{% url 'intake_manual_review' %}" class="card" style="margin:0; text-decoration:none; color:inherit;">
                 <strong>Manual Review</strong>
                 <div class="muted" style="margin-top:0.35rem;">{{ manual_review_count }} requests</div>
+                <div class="muted" style="margin-top:0.35rem;">Verification exceptions that need a decision.</div>
             </a>
         {% endif %}
         {% if can_manage_waitlist %}
             <a href="{% url 'intake_waitlist' %}" class="card" style="margin:0; text-decoration:none; color:inherit;">
                 <strong>Waitlist</strong>
                 <div class="muted" style="margin-top:0.35rem;">{{ waitlist_count }} requests</div>
+                <div class="muted" style="margin-top:0.35rem;">State-based interest, outreach, and removals.</div>
             </a>
         {% endif %}
+        <a href="{% url 'intake_records' %}" class="card" style="margin:0; text-decoration:none; color:inherit;">
+            <strong>Records &amp; History</strong>
+            <div class="muted" style="margin-top:0.35rem;">{{ records_count }} records</div>
+            <div class="muted" style="margin-top:0.35rem;">Search anyone in the system and view status, review, and outreach history.</div>
+        </a>
     </div>
 </section>
 {% endblock %}

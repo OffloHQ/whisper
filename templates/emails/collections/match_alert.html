@@ -1,9 +1,23 @@
 {% load listing_extras %}
-<p>A new Whisper opportunity matches your saved intent.</p>
-<p><strong>{{ listing.title }}</strong><br>{{ listing.city }} · {{ listing.get_stage_display }} · {{ listing.price_min|compact_price }} to {{ listing.price_max|compact_price }}</p>
-<p>Matched collections:
-{% for collection_name in collection_names %}
-<br>{{ collection_name }}
-{% endfor %}
-</p>
-<p><a href="{{ site_base_url }}/board/">Open opportunities</a></p>
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<div style="text-align:center;">
+  <div style="font-size:24px; line-height:1.3; font-weight:600; margin:0 0 14px;">
+    A new Whisper opportunity matches your saved intent
+  </div>
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:0 auto; max-width:420px;">
+    <strong style="color:#1f1a14;">{{ listing.title }}</strong><br>
+    {{ listing.city }} &middot; {{ listing.get_stage_display }} &middot; {{ listing.price_min|compact_price }} to {{ listing.price_max|compact_price }}
+  </div>
+  <div style="font-size:15px; line-height:1.7; color:#4f463d; margin:18px auto 0; max-width:420px;">
+    Matched collections:
+    {% for collection_name in collection_names %}
+      <div>{{ collection_name }}</div>
+    {% endfor %}
+  </div>
+  <div style="margin:24px 0 0;">
+    <a href="{{ site_base_url }}/board/" style="display:inline-block; padding:12px 22px; border:1px solid #1f1a14; color:#ffffff; background-color:#1f1a14; text-decoration:none; font-size:15px; font-weight:600;">Open opportunities</a>
+  </div>
+</div>
+{% endblock %}

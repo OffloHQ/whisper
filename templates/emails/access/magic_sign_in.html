@@ -1,3 +1,18 @@
-<p>Your secure Whisper sign-in link is ready.</p>
-<p><a href="{{ sign_in_url }}">Sign in to Whisper</a></p>
-<p>This link expires shortly and can only be used once.</p>
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<div style="text-align:center;">
+  <div style="font-size:24px; line-height:1.3; font-weight:600; margin:0 0 14px;">
+    Your Whisper sign-in link is ready
+  </div>
+  <div style="font-size:16px; line-height:1.7; color:#4f463d; margin:0 auto; max-width:420px;">
+    Use the secure link below to sign in to Whisper.
+  </div>
+  <div style="margin:24px 0 0;">
+    <a href="{{ sign_in_url }}" style="display:inline-block; padding:12px 22px; border:1px solid #1f1a14; color:#ffffff; background-color:#1f1a14; text-decoration:none; font-size:15px; font-weight:600;">Sign in to Whisper</a>
+  </div>
+  <div style="font-size:14px; line-height:1.7; color:#7a7065; margin:18px auto 0; max-width:420px;">
+    This link expires shortly and can only be used once.
+  </div>
+</div>
+{% endblock %}

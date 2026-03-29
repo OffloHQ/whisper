@@ -1,6 +1,12 @@
-Whisper access is ready for you.
+Your Whisper signup link is ready.
 
-Complete signup:
+Use the secure link below to continue your signup:
 {{ signup_url }}
 
 This secure link will expire.
+
+--
+Whisper — private agent network
+Operated by Barder Works LLC
+1112 Wilmot Rd STE 91H
+Scarsdale, NY 10583

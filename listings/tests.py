@@ -36,7 +36,7 @@ from .email_flows import build_agent_email_verification_token
 from .intake import WAITLIST_TOAST_MESSAGE, approve_access_request, reject_access_request
 from .forms import FeedFilterForm, ListingForm
 from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, EmailNotificationLog, InAppNotification, Listing, SavedListing
-from .retention import get_cleanup_querysets
+from .retention import get_cleanup_querysets, get_incomplete_access_request_reminder_querysets
 from .utils import format_listing_price, get_town_area_choices
 from .verification.schemas import VerificationResult, VerificationStatus
 from .verification.utils import normalize_state_code
@@ -1084,20 +1084,11 @@ class RetentionCleanupTests(TestCase):
                 "auth_tokens.qr_expired",
                 "auth_tokens.qr_used",
                 "auth_tokens.non_qr",
-                "access_requests.pending_or_waitlist",
                 "access_requests.rejected",
             ),
         )
 
     def test_stale_access_requests_are_selected_conservatively(self):
-        stale_pending = AccessRequest.objects.create(
-            email="stale-pending@example.com",
-            status=AccessRequest.Status.MANUAL_REVIEW,
-            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
-            decision_status=AccessRequest.DecisionStatus.PENDING,
-        )
-        AccessRequest.objects.filter(pk=stale_pending.pk).update(updated_at=timezone.now() - timedelta(days=91))
-
         stale_rejected = AccessRequest.objects.create(
             email="stale-rejected@example.com",
             status=AccessRequest.Status.MANUAL_REVIEW,
@@ -1132,11 +1123,61 @@ class RetentionCleanupTests(TestCase):
 
         cleanup_targets = get_cleanup_querysets()
 
-        self.assertIn(stale_pending, cleanup_targets["access_requests.pending_or_waitlist"])
         self.assertIn(stale_rejected, cleanup_targets["access_requests.rejected"])
-        self.assertNotIn(protected, cleanup_targets["access_requests.pending_or_waitlist"])
         self.assertNotIn(reviewed_rejected, cleanup_targets["access_requests.rejected"])
-        self.assertNotIn(completed, cleanup_targets["access_requests.pending_or_waitlist"])
+        self.assertNotIn(protected, cleanup_targets["access_requests.rejected"])
+        self.assertNotIn(completed, cleanup_targets["access_requests.rejected"])
+
+    @override_settings(
+        INCOMPLETE_ACCESS_REQUEST_FIRST_REMINDER_DAYS=4,
+        INCOMPLETE_ACCESS_REQUEST_SECOND_REMINDER_DAYS=7,
+        INCOMPLETE_ACCESS_REQUEST_PURGE_DAYS=14,
+    )
+    def test_incomplete_signup_lifecycle_selectors_are_single_owner_of_stale_pending_rows(self):
+        first_reminder = AccessRequest.objects.create(
+            email="first-reminder@example.com",
+            status=AccessRequest.Status.LINK_SENT,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            signup_sent_at=timezone.now() - timedelta(days=5),
+        )
+        second_reminder = AccessRequest.objects.create(
+            email="second-reminder@example.com",
+            status=AccessRequest.Status.LINK_SENT,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            signup_sent_at=timezone.now() - timedelta(days=8),
+        )
+        purge_target = AccessRequest.objects.create(
+            email="purge-target@example.com",
+            status=AccessRequest.Status.LINK_SENT,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            signup_sent_at=timezone.now() - timedelta(days=15),
+        )
+        protected_waitlist = AccessRequest.objects.create(
+            email="protected-waitlist@example.com",
+            status=AccessRequest.Status.WAITLIST,
+            queue_type=AccessRequest.QueueType.WAITLIST,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            signup_sent_at=timezone.now() - timedelta(days=20),
+        )
+        protected_manual_review = AccessRequest.objects.create(
+            email="protected-review@example.com",
+            status=AccessRequest.Status.MANUAL_REVIEW,
+            queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+            signup_sent_at=timezone.now() - timedelta(days=20),
+        )
+
+        reminder_targets = get_incomplete_access_request_reminder_querysets()
+        cleanup_targets = get_cleanup_querysets()
+
+        self.assertIn(first_reminder, reminder_targets["access_requests.incomplete_signup_first_reminder"])
+        self.assertIn(second_reminder, reminder_targets["access_requests.incomplete_signup_second_reminder"])
+        self.assertIn(purge_target, reminder_targets["access_requests.incomplete_signup_purge"])
+        self.assertNotIn(protected_waitlist, reminder_targets["access_requests.incomplete_signup_purge"])
+        self.assertNotIn(protected_manual_review, reminder_targets["access_requests.incomplete_signup_purge"])
+        self.assertNotIn(first_reminder, cleanup_targets["access_requests.rejected"])
+        self.assertNotIn(second_reminder, cleanup_targets["access_requests.rejected"])
+        self.assertNotIn(purge_target, cleanup_targets["access_requests.rejected"])
 
     def test_cleanup_retention_dry_run_does_not_delete(self):
         AuthAccessToken.objects.create(
@@ -1150,7 +1191,7 @@ class RetentionCleanupTests(TestCase):
             status=AccessRequest.Status.REQUESTED,
             decision_status=AccessRequest.DecisionStatus.PENDING,
         )
-        AccessRequest.objects.filter(pk=stale_request.pk).update(updated_at=timezone.now() - timedelta(days=91))
+        AccessRequest.objects.filter(pk=stale_request.pk).update(signup_sent_at=timezone.now() - timedelta(days=15))
 
         output = StringIO()
         call_command("cleanup_retention", "--dry-run", stdout=output)
@@ -1173,7 +1214,7 @@ class RetentionCleanupTests(TestCase):
             status=AccessRequest.Status.REQUESTED,
             decision_status=AccessRequest.DecisionStatus.PENDING,
         )
-        AccessRequest.objects.filter(pk=stale_request.pk).update(updated_at=timezone.now() - timedelta(days=91))
+        AccessRequest.objects.filter(pk=stale_request.pk).update(signup_sent_at=timezone.now() - timedelta(days=15))
 
         output = StringIO()
         call_command("cleanup_retention", stdout=output)

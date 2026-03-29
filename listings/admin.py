@@ -21,7 +21,7 @@ class AccessRequestAdmin(admin.ModelAdmin):
     list_filter = ("queue_type", "decision_status", "reason_code")
     actions = ("approve_manual_review_requests", "activate_waitlisted_requests", "reject_manual_review_requests")
 
-    @admin.action(description="Activate selected manual-review requests")
+    @admin.action(description="Manually verify selected manual-review requests and send next-step email")
     def approve_manual_review_requests(self, request, queryset):
         approved_count, skipped_count, failed_count, _, _ = approve_manual_review_requests(
             access_requests=queryset,
@@ -30,10 +30,10 @@ class AccessRequestAdmin(admin.ModelAdmin):
         )
         self.message_user(
             request,
-            f"Approved {approved_count} manual-review request(s). Skipped {skipped_count}. Failed {failed_count}.",
+            f"Processed {approved_count} manual-review verification approval(s). Skipped {skipped_count}. Failed {failed_count}.",
         )
 
-    @admin.action(description="Activate selected waitlist requests")
+    @admin.action(description="Send waitlist update to selected waitlist requests")
     def activate_waitlisted_requests(self, request, queryset):
         activated_count, skipped_count, failed_count, _, _ = activate_waitlist_requests(
             access_requests=queryset,
@@ -42,10 +42,10 @@ class AccessRequestAdmin(admin.ModelAdmin):
         )
         self.message_user(
             request,
-            f"Activated {activated_count} waitlist request(s). Skipped {skipped_count}. Failed {failed_count}.",
+            f"Sent waitlist updates to {activated_count} request(s). Skipped {skipped_count}. Failed {failed_count}.",
         )
 
-    @admin.action(description="Reject selected manual-review requests")
+    @admin.action(description="Record verification failure for selected manual-review requests")
     def reject_manual_review_requests(self, request, queryset):
         rejected_count, skipped_count, failed_count, _, _ = reject_manual_review_requests(
             access_requests=queryset,
@@ -53,7 +53,7 @@ class AccessRequestAdmin(admin.ModelAdmin):
         )
         self.message_user(
             request,
-            f"Rejected {rejected_count} manual-review request(s). Skipped {skipped_count}. Failed {failed_count}.",
+            f"Recorded {rejected_count} manual-review rejection(s). Skipped {skipped_count}. Failed {failed_count}.",
         )
 
 

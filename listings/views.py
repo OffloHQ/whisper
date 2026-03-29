@@ -23,6 +23,7 @@ from .email_flows import (
     build_access_request_signup_token,
     load_access_request_continuation_token,
     load_access_request_signup_token,
+    load_waitlist_unsubscribe_token,
     send_access_request_signup_email,
     build_agent_email_verification_token,
     load_agent_email_verification_token,
@@ -42,6 +43,7 @@ from .forms import (
     ListingForm,
     NotificationPreferencesForm,
     RequestAccessForm,
+    StateWaitlistForm,
     SignupContactForm,
     SignupIdentityForm,
 )
@@ -54,7 +56,7 @@ from .intake import (
 from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, InAppNotification, Listing, SavedListing
 from .utils import format_listing_price
 from .verification import VerificationService, VerificationStatus
-from .verification.utils import normalize_license_number
+from .verification.utils import get_state_display_name, normalize_license_number
 
 CURRENT_AGENT_SESSION_KEY = "current_agent_id"
 CURRENT_AGENT_LOCKED_OUT_KEY = "current_agent_logged_out"
@@ -72,7 +74,12 @@ LEGAL_NOTICE_MESSAGE = (
 )
 
 def get_active_agent_queryset():
-    return AgentUser.objects.filter(is_active=True, deleted_at__isnull=True).order_by("pk")
+    return AgentUser.objects.filter(
+        is_active=True,
+        is_verified=True,
+        signup_status=AgentUser.SignupStatus.ACTIVE,
+        deleted_at__isnull=True,
+    ).order_by("pk")
 
 
 def get_unread_notification_count(agent):
@@ -146,12 +153,7 @@ def get_pending_access_request(request):
 
 
 def get_registered_agent_for_email(email):
-    return AgentUser.objects.filter(
-        email=email,
-        is_active=True,
-        deleted_at__isnull=True,
-        signup_status=AgentUser.SignupStatus.ACTIVE,
-    ).first()
+    return get_active_agent_queryset().filter(email=email).first()
 
 
 def get_agent_initials(agent):
@@ -607,7 +609,7 @@ def landing(request):
         form = EmailEntryForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data["email"].lower()
-            active_agent = AgentUser.objects.filter(email=email, is_active=True, deleted_at__isnull=True).first()
+            active_agent = get_registered_agent_for_email(email)
             access_request = AccessRequest.objects.filter(email=email).first()
             dev_sign_in_link = None
             sign_in_method = request.POST.get("sign_in_method", "email")
@@ -671,7 +673,7 @@ def request_access(request):
         if form.is_valid():
             email = form.cleaned_data["email"].lower()
             logger.info("request_access form valid for %s", email)
-            existing_agent = AgentUser.objects.filter(email=email, is_active=True, deleted_at__isnull=True).first()
+            existing_agent = get_registered_agent_for_email(email)
             if existing_agent is not None:
                 messages.error(request, "This email already has Whisper access. Use Log In.")
                 return redirect("landing")
@@ -712,6 +714,111 @@ def request_access(request):
         dev_signup_link = request.session.pop(DEV_SIGNUP_LINK_SESSION_KEY, None)
 
     return render(request, "request_access.html", {"form": form, "dev_signup_link": dev_signup_link})
+
+
+def state_waitlist(request):
+    submitted = False
+    submitted_state_name = ""
+
+    if request.method == "POST":
+        form = StateWaitlistForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data["email"].lower()
+            existing_agent = get_registered_agent_for_email(email)
+            if existing_agent is not None:
+                messages.error(request, "This email already has Whisper access. Use Log In.")
+                return redirect("landing")
+
+            access_request, _ = AccessRequest.objects.get_or_create(email=email)
+            access_request.full_name = form.cleaned_data["full_name"].strip()
+            access_request.state = form.cleaned_data["state"]
+            access_request.status = AccessRequest.Status.WAITLIST
+            access_request.queue_type = AccessRequest.QueueType.WAITLIST
+            access_request.decision_status = AccessRequest.DecisionStatus.PENDING
+            access_request.reason_code = AccessRequest.Reason.UNSUPPORTED_STATE
+            access_request.verification_status = AccessRequest.VerificationStatus.PENDING
+            access_request.verification_provider = ""
+            access_request.verification_attempted_at = None
+            access_request.verified_at = None
+            access_request.requires_manual_review = False
+            access_request.waitlist_unsubscribed_at = None
+            access_request.waitlist_removed_at = None
+            access_request.waitlist_removed_by = None
+            access_request.save(
+                update_fields=[
+                    "full_name",
+                    "state",
+                    "status",
+                    "queue_type",
+                    "decision_status",
+                    "reason_code",
+                    "verification_status",
+                    "verification_provider",
+                    "verification_attempted_at",
+                    "verified_at",
+                    "requires_manual_review",
+                    "waitlist_unsubscribed_at",
+                    "waitlist_removed_at",
+                    "waitlist_removed_by",
+                    "updated_at",
+                ]
+            )
+            waitlist_access_request(access_request)
+            submitted = True
+            submitted_state_name = get_state_display_name(access_request.state)
+            form = StateWaitlistForm()
+    else:
+        form = StateWaitlistForm()
+
+    return render(
+        request,
+        "state_waitlist.html",
+        {
+            "form": form,
+            "submitted": submitted,
+            "submitted_state_name": submitted_state_name,
+        },
+    )
+
+
+def unsubscribe_waitlist(request, token):
+    try:
+        payload = load_waitlist_unsubscribe_token(token)
+    except signing.BadSignature:
+        return render(
+            request,
+            "waitlist_unsubscribe_result.html",
+            {"message": "This waitlist unsubscribe link is invalid or has expired."},
+            status=400,
+        )
+
+    access_request = AccessRequest.objects.filter(
+        pk=payload["access_request_id"],
+        email=payload["email"],
+    ).first()
+    if access_request is None:
+        return render(
+            request,
+            "waitlist_unsubscribe_result.html",
+            {"message": "This waitlist record could not be found."},
+            status=404,
+        )
+
+    if access_request.waitlist_unsubscribed_at is None:
+        access_request.waitlist_unsubscribed_at = timezone.now()
+        access_request.save(update_fields=["waitlist_unsubscribed_at", "updated_at"])
+        access_request.log_waitlist_outreach_event(
+            outreach_type=AccessRequest.WaitlistOutreachType.UNSUBSCRIBED,
+            sent_at=access_request.waitlist_unsubscribed_at,
+            sent_by=None,
+            note="User unsubscribed from waitlist outreach.",
+        )
+
+    return render(
+        request,
+        "waitlist_unsubscribe_result.html",
+        {"message": "You’ve been unsubscribed from Whisper waitlist updates."},
+    )
 
 
 @never_cache
@@ -1389,6 +1496,9 @@ def delete_account(request):
 
 
 def workspace(request):
+    if get_current_agent(request) is None:
+        messages.error(request, "Log in to access the Whisper workspace.")
+        return redirect("landing")
     return render(
         request,
         "workspace.html",
@@ -1398,6 +1508,9 @@ def workspace(request):
 
 def workspace_collection_detail(request, collection_id):
     current_agent = get_current_agent(request)
+    if current_agent is None:
+        messages.error(request, "Log in to access the Whisper workspace.")
+        return redirect("landing")
     collection = get_object_or_404(
         Collection.objects.select_related("saved_filter"),
         pk=collection_id,
@@ -1540,6 +1653,9 @@ def render_post_listing(request, form, template_name, show_listing_form=False):
 
 def post_listing(request):
     template_name = "feed.html" if request.GET.get("source") == "feed" else "post_listing.html"
+    if get_current_agent(request) is None:
+        messages.error(request, "Log in to share an opportunity in Whisper.")
+        return redirect("landing")
 
     if request.method == "POST":
         form = ListingForm(request.POST)

@@ -1,5 +1,12 @@
 Hi {{ agent_name }},
 
-Please verify your Whisper email.
+Use the secure link below to verify your Whisper email.
 
-Verify email: {{ verification_url }}
+Verify email:
+{{ verification_url }}
+
+--
+Whisper — private agent network
+Operated by Barder Works LLC
+1112 Wilmot Rd STE 91H
+Scarsdale, NY 10583

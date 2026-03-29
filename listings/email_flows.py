@@ -1,14 +1,19 @@
 from django.conf import settings
 from django.core import signing
 from django.urls import reverse
+from urllib.parse import urlencode
 
 from services.email import send_email
 from services.email.messages import (
     build_access_request_activation_email,
     build_access_request_signup_email,
+    build_access_request_signup_reminder_email,
     build_access_request_manual_approval_email,
     build_access_request_rejection_email,
+    build_access_request_terminated_email,
     build_access_request_waitlist_email,
+    build_waitlist_coming_soon_email,
+    build_waitlist_open_signup_email,
     build_account_verification_email,
 )
 from .auth_links import build_auth_access_url, create_auth_access_token
@@ -17,6 +22,7 @@ from .auth_links import build_auth_access_url, create_auth_access_token
 EMAIL_VERIFICATION_SALT = "agent-email-verification"
 ACCESS_REQUEST_SIGNUP_SALT = "access-request-signup"
 ACCESS_REQUEST_CONTINUATION_SALT = "access-request-continuation"
+ACCESS_REQUEST_WAITLIST_UNSUBSCRIBE_SALT = "access-request-waitlist-unsubscribe"
 
 
 def build_agent_email_verification_token(agent_email):
@@ -78,6 +84,23 @@ def send_access_request_signup_email(request, access_request):
     )
 
 
+def build_access_request_signup_url(access_request):
+    return f"{settings.SITE_BASE_URL.rstrip('/')}{reverse('signup_identity', args=[build_access_request_signup_token(access_request)])}"
+
+
+def send_access_request_signup_reminder_email(*, access_request, reminder_day):
+    subject, html_body, text_body = build_access_request_signup_reminder_email(
+        signup_url=build_access_request_signup_url(access_request),
+        reminder_day=reminder_day,
+    )
+    return send_email(
+        to_email=access_request.email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+
+
 def build_access_request_continuation_token(access_request):
     return signing.dumps(
         {"access_request_id": access_request.id, "email": access_request.email},
@@ -93,6 +116,21 @@ def load_access_request_continuation_token(token):
     )
 
 
+def build_waitlist_unsubscribe_token(access_request):
+    return signing.dumps(
+        {"access_request_id": access_request.id, "email": access_request.email},
+        salt=ACCESS_REQUEST_WAITLIST_UNSUBSCRIBE_SALT,
+    )
+
+
+def load_waitlist_unsubscribe_token(token):
+    return signing.loads(
+        token,
+        salt=ACCESS_REQUEST_WAITLIST_UNSUBSCRIBE_SALT,
+        max_age=getattr(settings, "ACCESS_REQUEST_WAITLIST_UNSUBSCRIBE_LINK_MAX_AGE", 60 * 60 * 24 * 365),
+    )
+
+
 def send_access_request_manual_approval_email(*, access_request, continuation_link):
     subject, html_body, text_body = build_access_request_manual_approval_email(
         continuation_link=continuation_link,
@@ -105,8 +143,8 @@ def send_access_request_manual_approval_email(*, access_request, continuation_li
     )
 
 
-def send_access_request_rejection_email(*, access_request):
-    subject, html_body, text_body = build_access_request_rejection_email()
+def send_access_request_rejection_email(*, access_request, review_reason=""):
+    subject, html_body, text_body = build_access_request_rejection_email(review_reason=review_reason)
     return send_email(
         to_email=access_request.email,
         subject=subject,
@@ -117,6 +155,53 @@ def send_access_request_rejection_email(*, access_request):
 
 def send_access_request_waitlist_email(*, access_request):
     subject, html_body, text_body = build_access_request_waitlist_email()
+    return send_email(
+        to_email=access_request.email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+
+
+def send_access_request_terminated_email(*, access_request, termination_reason=""):
+    subject, html_body, text_body = build_access_request_terminated_email(termination_reason=termination_reason)
+    return send_email(
+        to_email=access_request.email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+
+
+def build_waitlist_unsubscribe_url(request, access_request):
+    return request.build_absolute_uri(
+        reverse("unsubscribe_waitlist", args=[build_waitlist_unsubscribe_token(access_request)])
+    )
+
+
+def build_waitlist_signup_url(request, access_request):
+    return request.build_absolute_uri(
+        f"{reverse('request_access')}?{urlencode({'email': access_request.email})}"
+    )
+
+
+def send_waitlist_coming_soon_email(request, *, access_request):
+    subject, html_body, text_body = build_waitlist_coming_soon_email(
+        unsubscribe_url=build_waitlist_unsubscribe_url(request, access_request),
+    )
+    return send_email(
+        to_email=access_request.email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+
+
+def send_waitlist_open_signup_email(request, *, access_request):
+    subject, html_body, text_body = build_waitlist_open_signup_email(
+        signup_url=build_waitlist_signup_url(request, access_request),
+        unsubscribe_url=build_waitlist_unsubscribe_url(request, access_request),
+    )
     return send_email(
         to_email=access_request.email,
         subject=subject,

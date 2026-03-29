@@ -4,7 +4,17 @@ from django import forms
 
 from .models import Collection, Listing
 from .utils import PRICE_INPUT_ERROR, get_town_area_choices, parse_price_input
-from .verification.utils import normalize_state_code
+from .verification.utils import STATE_NAME_BY_CODE, normalize_state_code
+
+
+WAITLIST_STATE_CHOICES = [
+    ("", "Select your state"),
+    *[
+        (state_code, state_name)
+        for state_code, state_name in sorted(STATE_NAME_BY_CODE.items(), key=lambda item: item[1])
+        if state_code != "NY"
+    ],
+]
 
 
 IDENTIFIER_BLOCKING_ERROR = (
@@ -249,6 +259,15 @@ class RequestAccessForm(forms.Form):
     email = forms.EmailField(label="Email")
 
 
+class StateWaitlistForm(forms.Form):
+    full_name = forms.CharField(label="Full name", max_length=255)
+    email = forms.EmailField(label="Email")
+    state = forms.ChoiceField(label="State", choices=WAITLIST_STATE_CHOICES)
+
+    def clean_state(self):
+        return normalize_state_code(self.cleaned_data["state"])
+
+
 class EmailEntryForm(forms.Form):
     email = forms.EmailField(
         label="",
@@ -263,7 +282,12 @@ class EmailEntryForm(forms.Form):
 
 class SignupIdentityForm(forms.Form):
     full_name = forms.CharField(label="Full name", max_length=255)
-    state = forms.CharField(label="State", max_length=32)
+    state = forms.ChoiceField(
+        label="I'm licensed in",
+        choices=[
+            ("NY", "New York"),
+        ],
+    )
     license_number = forms.CharField(label="State license number", max_length=100)
 
     def clean_state(self):

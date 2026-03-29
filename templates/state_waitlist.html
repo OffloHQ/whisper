@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Join the Waitlist{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.access-gate-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.access-gate-card {
+    width: 100%;
+    max-width: 34rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo {
+    width: 92px;
+    height: auto;
+    display: block;
+    margin: 0 auto 1.25rem;
+}
+
+.access-card {
+    width: 100%;
+    text-align: left;
+}
+
+.access-card h1 {
+    font-size: 1.65rem;
+    line-height: 1.15;
+    margin: 0 0 0.75rem;
+}
+
+.access-gate-form {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.access-gate-form p {
+    margin: 0;
+}
+
+.access-gate-form input,
+.access-gate-form select {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 12px;
+    border: 1px solid rgba(31,26,20,0.15);
+    background: white;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.access-gate-form input:focus,
+.access-gate-form select:focus {
+    outline: none;
+    border-color: #1f1a14;
+    box-shadow: 0 0 0 2px rgba(31,26,20,0.08);
+}
+
+.access-gate-form button {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    font-size: 0.95rem;
+    border-radius: 999px;
+    border: none;
+    background: #1f1a14;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.access-gate-secondary {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 1rem;
+}
+
+.access-gate-errors {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(120,53,15,0.08);
+    color: #7c2d12;
+    font-size: 0.92rem;
+}
+
+.card {
+    border-radius: 18px;
+    border: 1px solid rgba(31,26,20,0.08);
+    box-shadow: 0 10px 22px rgba(31,26,20,0.06);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="access-gate-shell">
+    <div class="access-gate-card">
+        <img src="{% static 'whisper/images/logo.svg' %}" alt="Whisper logo" class="logo">
+
+        <section class="card access-card">
+            {% if submitted %}
+                <h1>Thanks for joining the waitlist</h1>
+                <p class="access-gate-secondary">You’re on the list{% if submitted_state_name %} for {{ submitted_state_name }}{% endif %}. We’ll reach out as soon as Whisper opens in your area.</p>
+                <p class="access-gate-secondary"><a href="{% url 'landing' %}">Return to Whisper</a></p>
+            {% else %}
+                <h1>Join the waitlist for your state</h1>
+                <p class="access-gate-secondary">Whisper currently supports New York agents. Tell us where you’re licensed and we’ll email you as soon as access opens in your market.</p>
+
+                <form method="post" class="access-gate-form">
+                    {% csrf_token %}
+
+                    <p>
+                        <label for="{{ form.full_name.id_for_label }}">{{ form.full_name.label }}</label>
+                        {{ form.full_name }}
+                        {% if form.full_name.errors %}
+                        <div class="access-gate-errors">{{ form.full_name.errors }}</div>
+                        {% endif %}
+                    </p>
+
+                    <p>
+                        <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                        {{ form.email }}
+                        {% if form.email.errors %}
+                        <div class="access-gate-errors">{{ form.email.errors }}</div>
+                        {% endif %}
+                    </p>
+
+                    <p>
+                        <label for="{{ form.state.id_for_label }}">{{ form.state.label }}</label>
+                        {{ form.state }}
+                        {% if form.state.errors %}
+                        <div class="access-gate-errors">{{ form.state.errors }}</div>
+                        {% endif %}
+                    </p>
+
+                    <button type="submit">Join Waitlist</button>
+                </form>
+            {% endif %}
+        </section>
+    </div>
+</section>
+{% endblock %}

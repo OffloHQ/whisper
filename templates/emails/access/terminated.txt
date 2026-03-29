@@ -1,0 +1,12 @@
+Your access to Whisper has been revoked.
+
+{% if termination_reason %}Reason category: {{ termination_reason }}
+{% endif %}
+
+If you believe this was sent in error, reply to this email for follow-up.
+
+--
+Whisper — private agent network
+Operated by Barder Works LLC
+1112 Wilmot Rd STE 91H
+Scarsdale, NY 10583
