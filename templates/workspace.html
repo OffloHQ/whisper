@@ -365,6 +365,65 @@
             transform: translate(-50%, -50%);
             width: calc(100% - 2rem);
         }
+        .workspace-section-card.is-collection-index {
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+            gap: 0.5rem;
+            padding: 0;
+        }
+        .workspace-section-card.is-collection-index > h2 {
+            font-size: 1rem;
+            line-height: 1.2;
+        }
+        .workspace-collection-list {
+            gap: 0.45rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+        .workspace-collection-card {
+            align-content: start;
+            background: rgba(255, 252, 246, 0.82);
+            border: 1px solid rgba(31, 26, 20, 0.06);
+            border-radius: 16px;
+            gap: 0.32rem;
+            min-height: 0;
+            padding: 0.72rem 0.78rem 0.74rem;
+            transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+        }
+        .workspace-collection-card:hover {
+            border-color: rgba(31, 26, 20, 0.14);
+            box-shadow: 0 10px 22px rgba(31, 26, 20, 0.06);
+            transform: translateY(-1px);
+        }
+        .workspace-collection-meta {
+            align-items: flex-start;
+        }
+        .workspace-collection-meta h2 {
+            font-size: 1rem;
+            line-height: 1.18;
+        }
+        .workspace-collection-summary {
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            color: var(--muted);
+            display: -webkit-box;
+            font-size: 0.9rem;
+            line-height: 1.35;
+            overflow: hidden;
+        }
+        .workspace-collection-card-footer {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem 0.65rem;
+            margin-top: 0;
+        }
+        .workspace-alert-badge {
+            padding: 0.22rem 0.5rem;
+        }
+        .workspace-count {
+            font-size: 0.85rem;
+        }
         .workspace-record-header {
             align-items: center;
             color: #7b6f64;
@@ -464,7 +523,7 @@
     </nav>
 
     {% if active_section == "collections" %}
-        <section class="card workspace-section-card">
+        <section class="card workspace-section-card is-collection-index">
             <h2>Collections</h2>
             {% if collections %}
                 <div class="workspace-collection-list">
@@ -472,14 +531,14 @@
                         <a href="{{ collection.detail_url }}" class="card workspace-collection-card">
                             <div class="workspace-collection-meta">
                                 <h2>{{ collection.name }}</h2>
-                                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end;">
-                                    {% if collection.notifications_enabled %}
-                                        <span class="workspace-alert-badge">Alert On</span>
-                                    {% endif %}
-                                    <span class="workspace-count">{{ collection.listing_count }} items</span>
-                                </div>
                             </div>
-                            <p class="muted">{{ collection.summary }}</p>
+                            <p class="workspace-collection-summary">{{ collection.summary }}</p>
+                            <div class="workspace-collection-card-footer">
+                                {% if collection.notifications_enabled %}
+                                    <span class="workspace-alert-badge">Alert On</span>
+                                {% endif %}
+                                <span class="workspace-count">{{ collection.listing_count }} items</span>
+                            </div>
                         </a>
                     {% endfor %}
                 </div>

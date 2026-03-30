@@ -6,6 +6,18 @@
 {% block app_body_class %}feed-app-shell with-desktop-shell{% endblock %}
 
 {% block extra_head %}
+<script>
+    (function () {
+        var mode = "list";
+        try {
+            var storedMode = window.localStorage.getItem("whisperFeedViewMode");
+            if (storedMode === "card" || storedMode === "list") {
+                mode = storedMode;
+            }
+        } catch (error) {}
+        document.documentElement.setAttribute("data-feed-view-mode", mode);
+    })();
+</script>
 <style>
     .feed-app-shell {
         min-height: calc(100vh - 74px);
@@ -67,6 +79,28 @@
         align-items: center;
         display: flex;
         gap: 0.75rem;
+    }
+    .view-toggle {
+        align-items: center;
+        background: rgba(255, 252, 246, 0.92);
+        border: 1px solid rgba(31, 26, 20, 0.12);
+        border-radius: 999px;
+        display: inline-flex;
+        gap: 0.2rem;
+        padding: 0.18rem;
+    }
+    .view-toggle-button {
+        background: transparent;
+        border: 0;
+        border-radius: 999px;
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        padding: 0.5rem 0.82rem;
+    }
+    .view-toggle-button.is-active {
+        background: rgba(31, 26, 20, 0.1);
+        color: var(--text);
     }
     .toolbar-button,
     .toolbar-sort {
@@ -291,6 +325,11 @@
         line-height: 1.1;
         margin: 0;
     }
+    .listing-area {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin: 0.28rem 0 0;
+    }
     .listing-primary-meta {
         display: flex;
         flex-wrap: wrap;
@@ -329,6 +368,10 @@
     .listing-specs {
         color: var(--muted);
         font-size: 0.94rem;
+    }
+    .listing-timing {
+        color: var(--muted);
+        font-size: 0.86rem;
     }
     .listing-note {
         min-width: 0;
@@ -388,6 +431,22 @@
         grid-column: 1 / -1;
         max-width: 34rem;
     }
+    .board-shell.is-card-view .listing-grid {
+        grid-template-columns: 1fr;
+    }
+    .board-shell.is-card-view .listing-list-header {
+        display: none;
+    }
+    .board-shell.is-card-view .listing-card {
+        gap: 0.7rem;
+        padding: 0.95rem 1rem;
+    }
+    .board-shell.is-card-view .listing-card-main {
+        gap: 0.62rem;
+    }
+    .board-shell.is-card-view .listing-data {
+        align-items: flex-start;
+    }
     .board-shell.is-list-view .listing-grid {
         grid-template-columns: 1fr;
     }
@@ -424,6 +483,9 @@
     }
     .board-shell.is-list-view .listing-price {
         font-size: 0.97rem;
+    }
+    .board-shell.is-list-view .listing-timing {
+        font-size: 0.82rem;
     }
     .board-shell.is-list-view .listing-description {
         -webkit-line-clamp: 2;
@@ -727,6 +789,9 @@
         .board-toolbar {
             display: flex;
         }
+        .board-shell.is-card-view .listing-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
         .collection-alert-card.is-mobile-collapsible {
             display: grid;
         }
@@ -895,6 +960,19 @@
             grid-area: contact;
             margin-top: 0.35rem;
         }
+        .board-shell.is-card-view .listing-card {
+            border-radius: 18px;
+            gap: 0.72rem;
+        }
+        .board-shell.is-card-view .listing-card-top {
+            gap: 0.75rem;
+        }
+        .board-shell.is-card-view .listing-description {
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            display: -webkit-box;
+            overflow: hidden;
+        }
         .listing-sheet {
             border-left: 1px solid rgba(31, 26, 20, 0.08);
             border-radius: 28px 0 0 28px;
@@ -951,6 +1029,11 @@
             padding-bottom: 1rem;
         }
     }
+    @media (min-width: 1120px) {
+        .board-shell.is-card-view .listing-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
 </style>
 {% endblock %}
 
@@ -993,6 +1076,10 @@
                             </svg>
                             <span>Filters</span>
                         </button>
+                        <div class="view-toggle" aria-label="Feed view mode">
+                            <button type="button" class="view-toggle-button" data-feed-view-toggle="list">List</button>
+                            <button type="button" class="view-toggle-button" data-feed-view-toggle="card">Cards</button>
+                        </div>
                         <button type="button" class="toolbar-sort" aria-label="Sort opportunities">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M8 7h10"></path>
@@ -1019,6 +1106,10 @@
                         <span>Notify me</span>
                     </button>
                 {% endif %}
+                <div class="view-toggle" aria-label="Feed view mode">
+                    <button type="button" class="view-toggle-button" data-feed-view-toggle="list">List</button>
+                    <button type="button" class="view-toggle-button" data-feed-view-toggle="card">Cards</button>
+                </div>
             </div>
         </header>
 
@@ -1242,10 +1333,12 @@
 <script>
     (function () {
         const appBody = document.querySelector(".feed-app-shell");
+        const feedLayout = document.getElementById("feed-layout");
         const desktopToggle = document.getElementById("desktop-shell-toggle");
         const filterOverlay = document.getElementById("filter-overlay");
         const listingOverlay = document.getElementById("listing-overlay");
         const accountOverlay = document.getElementById("account-overlay");
+        const viewToggleButtons = document.querySelectorAll("[data-feed-view-toggle]");
         const mobileSaveIntentTrigger = document.getElementById("mobile-save-intent-trigger");
         const mobileSaveIntentPanel = document.getElementById("mobile-save-intent-panel");
         const mobileSaveIntentClose = document.getElementById("mobile-save-intent-close");
@@ -1283,6 +1376,25 @@
             mobileSaveIntentTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
         }
 
+        function applyViewMode(mode, persist) {
+            const nextMode = mode === "card" ? "card" : "list";
+            if (feedLayout) {
+                feedLayout.classList.toggle("is-card-view", nextMode === "card");
+                feedLayout.classList.toggle("is-list-view", nextMode === "list");
+            }
+            document.documentElement.setAttribute("data-feed-view-mode", nextMode);
+            viewToggleButtons.forEach((button) => {
+                const isActive = button.getAttribute("data-feed-view-toggle") === nextMode;
+                button.classList.toggle("is-active", isActive);
+                button.setAttribute("aria-pressed", isActive ? "true" : "false");
+            });
+            if (persist) {
+                try {
+                    window.localStorage.setItem("whisperFeedViewMode", nextMode);
+                } catch (error) {}
+            }
+        }
+
         function syncCollectionChoiceField() {
             if (!collectionChoiceForm) {
                 return;
@@ -1309,6 +1421,14 @@
                 setDesktopRailState(willExpand);
             });
         }
+
+        applyViewMode(document.documentElement.getAttribute("data-feed-view-mode"), false);
+
+        viewToggleButtons.forEach((button) => {
+            button.addEventListener("click", () => {
+                applyViewMode(button.getAttribute("data-feed-view-toggle"), true);
+            });
+        });
 
         document.querySelectorAll(".open-filter-panel").forEach((button) => {
             button.addEventListener("click", () => setOverlayState(filterOverlay, true));

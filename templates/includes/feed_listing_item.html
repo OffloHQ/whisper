@@ -14,6 +14,9 @@
                                 Untitled Opportunity
                             {% endif %}
                         </h2>
+                        {% if has_title and has_city %}
+                            <p class="listing-area">{{ listing.city }}</p>
+                        {% endif %}
                     </div>
                     <form method="post" action="{% url 'toggle_saved_listing' listing.id %}" class="listing-save-form">
                         {% csrf_token %}
@@ -53,6 +56,9 @@
                         {% if listing.beds and listing.baths %} / {% endif %}
                         {% if listing.baths %}{{ listing.baths }} Bath{% if listing.baths != "1" and listing.baths != "1.0" %}s{% endif %}{% endif %}
                     </p>
+                {% endif %}
+                {% if listing.created_at %}
+                    <p class="listing-timing">{{ listing.created_at|timesince }} ago</p>
                 {% endif %}
             </div>
 
