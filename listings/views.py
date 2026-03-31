@@ -13,8 +13,6 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 
 from .auth_links import (
-    build_qr_image_url,
-    create_qr_sign_in_token,
     get_auth_access_token,
     get_valid_auth_access_token,
     send_magic_sign_in_link,
@@ -65,7 +63,6 @@ CURRENT_AGENT_LOCKED_OUT_KEY = "current_agent_logged_out"
 PENDING_SIGNUP_AGENT_SESSION_KEY = "pending_signup_agent_id"
 PENDING_ACCESS_REQUEST_SESSION_KEY = "pending_access_request_id"
 DEV_SIGNUP_LINK_SESSION_KEY = "dev_access_request_signup_link"
-DEV_SIGNIN_LINK_SESSION_KEY = "dev_magic_sign_in_link"
 
 logger = logging.getLogger(__name__)
 FRONT_DOOR_NEUTRAL_TOAST = "If this email is registered, a sign-in link has been sent. Please check your inbox and spam folder."
@@ -679,36 +676,16 @@ def landing(request):
     request_access_url = reverse("request_access")
     if request_access_email:
         request_access_url = f"{request_access_url}?{urlencode({'email': request_access_email})}"
-    qr_panel = None
     if request.method == "POST":
         form = EmailEntryForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data["email"].lower()
             active_agent = get_registered_agent_for_email(email)
-            access_request = AccessRequest.objects.filter(email=email).first()
-            dev_sign_in_link = None
-            sign_in_method = request.POST.get("sign_in_method", "email")
 
+            messages.info(request, FRONT_DOOR_NEUTRAL_TOAST)
             if active_agent is not None:
-                if sign_in_method == "qr":
-                    qr_token, qr_sign_in_url = create_qr_sign_in_token(request, agent=active_agent, email=email)
-                    qr_panel = {
-                        "image_url": build_qr_image_url(qr_sign_in_url),
-                        "expires_at": qr_token.expires_at,
-                        "poll_url": reverse("qr_sign_in_status", args=[qr_token.token]),
-                    }
-                    return render(
-                        request,
-                        "landing.html",
-                        {
-                            "form": form,
-                            "request_access_url": request_access_url,
-                            "qr_panel": qr_panel,
-                        },
-                    )
-                messages.info(request, FRONT_DOOR_NEUTRAL_TOAST)
                 try:
-                    _, dev_sign_in_link = send_magic_sign_in_link(request, agent=active_agent, email=email)
+                    send_magic_sign_in_link(request, agent=active_agent, email=email)
                 except Exception:
                     if not settings.DEBUG:
                         raise
@@ -717,27 +694,18 @@ def landing(request):
                         email,
                         exc_info=True,
                     )
-                    messages.warning(request, "Local email delivery failed. Use the dev sign-in link below to continue testing.")
-                if getattr(settings, "DEV_EXPOSE_SIGNUP_LINKS", False) and dev_sign_in_link:
-                    request.session[DEV_SIGNIN_LINK_SESSION_KEY] = dev_sign_in_link
-                return redirect("landing")
+                    messages.warning(request, "Local email delivery failed.")
+            return redirect("landing")
 
-            messages.info(request, FRONT_DOOR_NEUTRAL_TOAST)
-            return redirect(f"{reverse('landing')}?{urlencode({'email': email})}")
     else:
         form = EmailEntryForm()
 
-    dev_sign_in_link = None
-    if getattr(settings, "DEV_EXPOSE_SIGNUP_LINKS", False):
-        dev_sign_in_link = request.session.pop(DEV_SIGNIN_LINK_SESSION_KEY, None)
     return render(
         request,
         "landing.html",
         {
             "form": form,
             "request_access_url": request_access_url,
-            "dev_sign_in_link": dev_sign_in_link,
-            "qr_panel": qr_panel,
         },
     )
 
@@ -905,8 +873,11 @@ def consume_auth_access_token(request, token):
 
     if auth_access_token.delivery_method == AuthAccessToken.DeliveryMethod.QR:
         auth_access_token.mark_qr_completed()
-    else:
-        auth_access_token.mark_used()
+        set_current_agent(request, auth_access_token.agent)
+        messages.success(request, "Signed in to Whisper.")
+        return redirect(get_post_auth_redirect(auth_access_token.agent))
+
+    auth_access_token.mark_used()
     set_current_agent(request, auth_access_token.agent)
     messages.success(request, "Signed in to Whisper.")
     return redirect(get_post_auth_redirect(auth_access_token.agent))

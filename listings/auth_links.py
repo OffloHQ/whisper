@@ -31,9 +31,12 @@ def create_auth_access_token(
 
 def build_auth_access_url(request, auth_access_token):
     path = reverse("consume_auth_access_token", args=[auth_access_token.token])
+    site_base_url = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
+    if site_base_url:
+        return f"{site_base_url}{path}"
     if request is not None:
         return request.build_absolute_uri(path)
-    return f"{settings.SITE_BASE_URL.rstrip('/')}{path}"
+    return path
 
 
 def send_magic_sign_in_link(request, *, agent, email):

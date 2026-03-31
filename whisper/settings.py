@@ -198,8 +198,8 @@ if whitenoise is not None:
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 PRODUCT_NAME = os.getenv('PRODUCT_NAME', 'Whisper')
-EMAIL_PROVIDER = os.getenv('EMAIL_PROVIDER')
-DEFAULT_FROM_EMAIL = os.getenv('EMAILIT_FROM', 'hello@whispered.homes')
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "emailit").strip().lower()
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL") or os.getenv("EMAILIT_FROM", "hello@whispered.homes")
 EMAILIT_API_URL = os.getenv('EMAILIT_API_URL', 'https://api.emailit.com/v2/emails')
 EMAILIT_API_KEY = os.getenv('EMAILIT_API_KEY', '')
 SITE_BASE_URL = os.getenv('SITE_BASE_URL') or (
