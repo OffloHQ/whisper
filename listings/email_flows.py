@@ -1,11 +1,13 @@
 from django.conf import settings
 from django.core import signing
 from django.urls import reverse
+from django.utils import timezone
 from urllib.parse import urlencode
 
 from services.email import send_email
 from services.email.messages import (
     build_access_request_activation_email,
+    build_front_door_request_access_email,
     build_access_request_signup_email,
     build_access_request_signup_reminder_email,
     build_access_request_manual_approval_email,
@@ -16,7 +18,8 @@ from services.email.messages import (
     build_waitlist_open_signup_email,
     build_account_verification_email,
 )
-from .auth_links import build_auth_access_url, create_auth_access_token
+from .auth_links import build_auth_access_url, create_auth_access_token, send_magic_sign_in_link
+from .models import AccessRequest, AgentUser
 
 
 EMAIL_VERIFICATION_SALT = "agent-email-verification"
@@ -88,6 +91,10 @@ def build_access_request_signup_url(access_request):
     return f"{settings.SITE_BASE_URL.rstrip('/')}{reverse('signup_identity', args=[build_access_request_signup_token(access_request)])}"
 
 
+def build_access_request_continuation_url(access_request):
+    return f"{settings.SITE_BASE_URL.rstrip('/')}{reverse('signup_contact_continue', args=[build_access_request_continuation_token(access_request)])}"
+
+
 def send_access_request_signup_reminder_email(*, access_request, reminder_day):
     subject, html_body, text_body = build_access_request_signup_reminder_email(
         signup_url=build_access_request_signup_url(access_request),
@@ -140,6 +147,13 @@ def send_access_request_manual_approval_email(*, access_request, continuation_li
         subject=subject,
         html_body=html_body,
         text_body=text_body,
+    )
+
+
+def send_access_request_continuation_email(*, access_request):
+    return send_access_request_manual_approval_email(
+        access_request=access_request,
+        continuation_link=build_access_request_continuation_url(access_request),
     )
 
 
@@ -221,3 +235,59 @@ def send_access_request_activation_email(request, *, access_request, agent):
         text_body=text_body,
     )
     return auth_access_token, sign_in_url
+
+
+def build_front_door_request_access_url(request, *, email):
+    return request.build_absolute_uri(
+        f"{reverse('request_access')}?{urlencode({'email': email})}"
+    )
+
+
+def send_front_door_sign_in_email(request, *, email):
+    active_agent = AgentUser.objects.filter(
+        email=email,
+        is_active=True,
+        is_verified=True,
+        signup_status=AgentUser.SignupStatus.ACTIVE,
+        deleted_at__isnull=True,
+    ).first()
+    if active_agent is not None:
+        return "magic_link", send_magic_sign_in_link(request, agent=active_agent, email=email)
+
+    access_request = AccessRequest.objects.filter(email=email).first()
+    pending_contact_agent = AgentUser.objects.filter(
+        email=email,
+        signup_status=AgentUser.SignupStatus.PENDING_CONTACT,
+        deleted_at__isnull=True,
+    ).first()
+
+    if access_request is not None and access_request.completed_at is None and pending_contact_agent is not None:
+        return "continue_signup", send_access_request_continuation_email(access_request=access_request)
+
+    if access_request is not None and access_request.completed_at is None:
+        if access_request.status in {
+            AccessRequest.Status.REQUESTED,
+            AccessRequest.Status.LINK_SENT,
+        }:
+            access_request.status = AccessRequest.Status.LINK_SENT
+            access_request.signup_sent_at = timezone.now()
+            access_request.save(update_fields=["status", "signup_sent_at", "updated_at"])
+            return "signup_resume", send_access_request_signup_email(request, access_request)
+
+        request_access_url = build_front_door_request_access_url(request, email=email)
+        subject, html_body, text_body = build_front_door_request_access_email(request_access_url=request_access_url)
+        return "request_access", send_email(
+            to_email=email,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+        )
+
+    request_access_url = build_front_door_request_access_url(request, email=email)
+    subject, html_body, text_body = build_front_door_request_access_email(request_access_url=request_access_url)
+    return "request_access", send_email(
+        to_email=email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )

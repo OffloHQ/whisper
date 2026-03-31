@@ -15,7 +15,6 @@ from django.views.decorators.cache import never_cache
 from .auth_links import (
     get_auth_access_token,
     get_valid_auth_access_token,
-    send_magic_sign_in_link,
 )
 from .checkins import is_listing_stale, load_signed_listing_token
 from .collection_alerts import send_collection_match_alerts_for_listing
@@ -24,6 +23,7 @@ from .email_flows import (
     load_access_request_continuation_token,
     load_access_request_signup_token,
     load_waitlist_unsubscribe_token,
+    send_front_door_sign_in_email,
     send_access_request_signup_email,
     build_agent_email_verification_token,
     load_agent_email_verification_token,
@@ -680,21 +680,19 @@ def landing(request):
         form = EmailEntryForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data["email"].lower()
-            active_agent = get_registered_agent_for_email(email)
 
             messages.info(request, FRONT_DOOR_NEUTRAL_TOAST)
-            if active_agent is not None:
-                try:
-                    send_magic_sign_in_link(request, agent=active_agent, email=email)
-                except Exception:
-                    if not settings.DEBUG:
-                        raise
-                    logger.warning(
-                        "Magic sign-in email delivery failed in DEBUG mode for %s. Continuing without outbound email.",
-                        email,
-                        exc_info=True,
-                    )
-                    messages.warning(request, "Local email delivery failed.")
+            try:
+                send_front_door_sign_in_email(request, email=email)
+            except Exception:
+                if not settings.DEBUG:
+                    raise
+                logger.warning(
+                    "Front-door sign-in email delivery failed in DEBUG mode for %s. Continuing without outbound email.",
+                    email,
+                    exc_info=True,
+                )
+                messages.warning(request, "Local email delivery failed.")
             return redirect("landing")
 
     else:

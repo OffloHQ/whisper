@@ -1,0 +1,15 @@
+{% extends "emails/base_email.html" %}
+
+{% block email_content %}
+<p>Hi,</p>
+
+<p>We couldn’t find an active Whisper account for this email.</p>
+
+<p>If you’re an agent and would like access, you can request it here:</p>
+
+<p><a href="{{ request_access_url }}">Request access</a></p>
+
+<p>If you’ve already started the process, you may still be under review.</p>
+
+<p>&mdash;<br>Whisper</p>
+{% endblock %}

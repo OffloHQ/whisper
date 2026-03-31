@@ -32,7 +32,7 @@ from .checkins import (
     should_send_checkin_for_listing,
     send_grouped_listing_checkins,
 )
-from .email_flows import build_agent_email_verification_token
+from .email_flows import build_agent_email_verification_token, send_front_door_sign_in_email
 from .intake import WAITLIST_TOAST_MESSAGE, approve_access_request, reject_access_request
 from .forms import FeedFilterForm, ListingForm
 from .models import AccessRequest, AgentEmail, AgentPhone, AgentUser, AuthAccessToken, Collection, CollectionFilter, CollectionItem, EmailNotificationLog, InAppNotification, Listing, SavedListing
@@ -881,44 +881,116 @@ class AccessFlowTests(TestCase):
 class FrontDoorMagicLinkTests(TestCase):
     neutral_toast = "If this email is registered, a sign-in link has been sent. Please check your inbox and spam folder."
 
-    @patch("listings.views.send_magic_sign_in_link")
-    def test_landing_sends_magic_link_for_active_agent_email(self, mock_send_magic_sign_in_link):
+    @patch("listings.views.send_front_door_sign_in_email")
+    def test_landing_sends_follow_up_email_for_submitted_email(self, mock_send_front_door_sign_in_email):
         agent = create_agent(
             name="Active Agent",
             email="active@example.com",
             license_number="LIC-ACTIVE",
             is_verified=True,
         )
-        mock_send_magic_sign_in_link.return_value = (MagicMock(), "https://example.com/sign-in/dev")
+        mock_send_front_door_sign_in_email.return_value = ("magic_link", (MagicMock(), "https://example.com/sign-in/dev"))
 
         response = self.client.post(reverse("landing"), {"email": agent.email}, follow=True)
 
         self.assertRedirects(response, reverse("landing"))
-        self.assertTrue(mock_send_magic_sign_in_link.called)
+        self.assertTrue(mock_send_front_door_sign_in_email.called)
         self.assertContains(response, self.neutral_toast)
 
-    def test_landing_shows_under_review_message_for_pending_request(self):
+    @patch("listings.views.send_front_door_sign_in_email")
+    def test_landing_shows_under_review_message_for_pending_request(self, mock_send_front_door_sign_in_email):
         AccessRequest.objects.create(
             email="pending@example.com",
             status=AccessRequest.Status.MANUAL_REVIEW,
             queue_type=AccessRequest.QueueType.MANUAL_REVIEW,
             decision_status=AccessRequest.DecisionStatus.PENDING,
         )
+        mock_send_front_door_sign_in_email.return_value = ("request_access", None)
 
         response = self.client.post(reverse("landing"), {"email": "pending@example.com"}, follow=True)
 
-        self.assertRedirects(response, reverse("landing") + "?email=pending%40example.com")
+        self.assertRedirects(response, reverse("landing"))
         self.assertContains(response, self.neutral_toast)
-        self.assertContains(response, reverse("request_access") + "?email=pending%40example.com", html=False)
+        self.assertContains(response, reverse("request_access"), html=False)
         self.assertNotContains(response, "That email is still under review.")
 
-    def test_landing_shows_unknown_email_message_and_prefilled_request_access_link(self):
+    @patch("listings.views.send_front_door_sign_in_email")
+    def test_landing_shows_unknown_email_message_and_prefilled_request_access_link(self, mock_send_front_door_sign_in_email):
+        mock_send_front_door_sign_in_email.return_value = ("request_access", None)
+
         response = self.client.post(reverse("landing"), {"email": "unknown@example.com"}, follow=True)
 
-        self.assertRedirects(response, reverse("landing") + "?email=unknown%40example.com")
+        self.assertRedirects(response, reverse("landing"))
         self.assertContains(response, self.neutral_toast)
-        self.assertContains(response, reverse("request_access") + "?email=unknown%40example.com", html=False)
+        self.assertContains(response, reverse("request_access"), html=False)
         self.assertNotContains(response, "We don’t recognize that email yet.")
+
+    @patch("listings.email_flows.send_magic_sign_in_link")
+    def test_front_door_sign_in_email_sends_magic_link_for_active_agent(self, mock_send_magic_sign_in_link):
+        agent = create_agent(
+            name="Magic Agent",
+            email="magic-frontdoor@example.com",
+            license_number="LIC-MAGIC-FRONTDOOR",
+            is_verified=True,
+        )
+        request = RequestFactory().post(reverse("landing"), {"email": agent.email})
+
+        result = send_front_door_sign_in_email(request, email=agent.email)
+
+        self.assertEqual(result[0], "magic_link")
+        mock_send_magic_sign_in_link.assert_called_once()
+
+    @patch("listings.email_flows.send_access_request_continuation_email")
+    def test_front_door_sign_in_email_sends_continuation_for_pending_contact_state(self, mock_send_continuation_email):
+        access_request = AccessRequest.objects.create(
+            email="continue@example.com",
+            status=AccessRequest.Status.LINK_SENT,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        AgentUser.objects.create(
+            name="Continue Agent",
+            email=access_request.email,
+            state="NY",
+            license_number="LIC-CONTINUE",
+            signup_status=AgentUser.SignupStatus.PENDING_CONTACT,
+            is_active=False,
+            is_verified=True,
+        )
+        request = RequestFactory().post(reverse("landing"), {"email": access_request.email})
+
+        result = send_front_door_sign_in_email(request, email=access_request.email)
+
+        self.assertEqual(result[0], "continue_signup")
+        mock_send_continuation_email.assert_called_once_with(access_request=access_request)
+
+    @patch("listings.email_flows.send_access_request_signup_email")
+    def test_front_door_sign_in_email_sends_signup_resume_for_incomplete_access_request(self, mock_send_signup_email):
+        access_request = AccessRequest.objects.create(
+            email="resume@example.com",
+            status=AccessRequest.Status.LINK_SENT,
+            decision_status=AccessRequest.DecisionStatus.PENDING,
+        )
+        request = RequestFactory().post(reverse("landing"), {"email": access_request.email})
+
+        result = send_front_door_sign_in_email(request, email=access_request.email)
+
+        self.assertEqual(result[0], "signup_resume")
+        mock_send_signup_email.assert_called_once()
+        access_request.refresh_from_db()
+        self.assertIsNotNone(access_request.signup_sent_at)
+
+    @patch("listings.email_flows.send_email")
+    def test_front_door_sign_in_email_sends_dedicated_request_access_email_for_unknown_email_without_creating_record(self, mock_send_email):
+        request = RequestFactory().post(reverse("landing"), {"email": "new-frontdoor@example.com"})
+
+        result = send_front_door_sign_in_email(request, email="new-frontdoor@example.com")
+
+        self.assertEqual(result[0], "request_access")
+        mock_send_email.assert_called_once()
+        self.assertEqual(mock_send_email.call_args.kwargs["subject"], "Get access to Whisper")
+        self.assertIn("We couldn’t find an active Whisper account for this email.", mock_send_email.call_args.kwargs["text_body"])
+        self.assertIn("/request-access/?email=new-frontdoor%40example.com", mock_send_email.call_args.kwargs["text_body"])
+        self.assertFalse(AccessRequest.objects.filter(email="new-frontdoor@example.com").exists())
 
     def test_magic_link_sign_in_is_single_use_and_redirects_to_board(self):
         agent = create_agent(
@@ -949,23 +1021,21 @@ class FrontDoorMagicLinkTests(TestCase):
 
         self.assertContains(response, 'value="prefill@example.com"', html=False)
 
-    def test_landing_can_render_qr_panel_for_active_agent(self):
+    @patch("listings.views.send_front_door_sign_in_email")
+    def test_landing_ignores_qr_submission_and_keeps_public_flow_neutral(self, mock_send_front_door_sign_in_email):
         agent = create_agent(
             name="QR Agent",
             email="qr@example.com",
             license_number="LIC-QR",
             is_verified=True,
         )
+        mock_send_front_door_sign_in_email.return_value = ("magic_link", None)
 
-        response = self.client.post(
-            reverse("landing"),
-            {"email": agent.email, "sign_in_method": "qr"},
-        )
+        response = self.client.post(reverse("landing"), {"email": agent.email, "sign_in_method": "qr"}, follow=True)
 
-        self.assertEqual(response.status_code, 200)
-        token = AuthAccessToken.objects.get(email=agent.email, delivery_method=AuthAccessToken.DeliveryMethod.QR)
-        self.assertContains(response, "Scan with your phone to sign in.")
-        self.assertContains(response, reverse("qr_sign_in_status", args=[token.token]))
+        self.assertRedirects(response, reverse("landing"))
+        self.assertContains(response, self.neutral_toast)
+        self.assertNotContains(response, "Scan with your phone to sign in.")
 
     def test_qr_sign_in_marks_token_completed_and_signs_in_phone(self):
         agent = create_agent(

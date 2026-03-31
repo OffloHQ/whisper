@@ -1,0 +1,12 @@
+Hi,
+
+We couldn’t find an active Whisper account for this email.
+
+If you’re an agent and would like access, you can request it here:
+
+{{ request_access_url }}
+
+If you’ve already started the process, you may still be under review.
+
+—
+Whisper

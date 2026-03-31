@@ -16,6 +16,19 @@ def build_access_request_signup_email(*, signup_url):
     return subject, html_body, text_body
 
 
+def build_front_door_request_access_email(*, request_access_url):
+    subject = "Get access to Whisper"
+    html_body, text_body = render_email(
+        html_template="emails/access/front_door_request_access.html",
+        text_template="emails/access/front_door_request_access.txt",
+        context={
+            "request_access_url": request_access_url,
+            "site_base_url": settings.SITE_BASE_URL,
+        },
+    )
+    return subject, html_body, text_body
+
+
 def build_access_request_signup_reminder_email(*, signup_url, reminder_day):
     subject = "Reminder: complete your Whisper signup"
     html_body, text_body = render_email(
